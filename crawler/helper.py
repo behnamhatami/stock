@@ -1,9 +1,9 @@
+import logging
 from datetime import datetime, timezone
 from io import StringIO
-import pandas as pd
 
+import pandas as pd
 import requests
-import logging
 
 from crawler.models import Share, ShareHistory
 
@@ -23,11 +23,13 @@ HEADERS = {
 
 def update_stock_history():
     for share in Share.objects.all():
+        update_stock_history_item(share)
+
+
+def update_stock_history_item(share, days=None):
+    if days is None:
         days = (datetime.now(timezone.utc) - share.last_update).days + 1 if share.last_update else 999999
-        read_stock_history(share, days=days)
 
-
-def read_stock_history(share, days):
     print(share.__dict__, days)
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
@@ -60,7 +62,7 @@ def read_stock_history(share, days):
     share.save()
 
 
-def read_stock_list():
+def update_stock_list():
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'
 
@@ -85,7 +87,7 @@ def read_stock_list():
             share = Share()
 
         share.eps = row[14]
-        share.symbol = row[2]
+        share.ticker = row[2]
         share.id = row[0]
         share.description = row[3]
 
