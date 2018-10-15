@@ -1,6 +1,7 @@
 from django.db import models
 
 # Create your models here.
+from django.utils.functional import cached_property
 from django_pandas.managers import DataFrameManager
 
 
@@ -12,8 +13,16 @@ class Share(models.Model):
     eps = models.IntegerField(null=True, blank=False)
     last_update = models.DateTimeField(null=True)
 
+    @cached_property
+    def daily_history(self):
+        df = self.history.all().order_by('date').to_dataframe(['date', 'first', 'high', 'low', 'close', 'volume'],
+                                                              index='date')
+        df.rename(columns={"close": "Close", "first": "Open", "date": "Date", "high": "High", "low": "Low",
+                           "volume": "Volume"}, inplace=True)
+        return df
 
-class ShareHistory(models.Model):
+
+class ShareDailyHistory(models.Model):
     share = models.ForeignKey(Share, null=False, blank=False, on_delete=models.CASCADE, related_name="history")
     date = models.DateField(null=False, blank=False)
 
@@ -31,8 +40,9 @@ class ShareHistory(models.Model):
 
     @staticmethod
     def get_historical_data(ticker):
-        df = Share.objects.get(ticker=ticker).history.all().order_by('date').to_dataframe(['date', 'first', 'high', 'low', 'close', 'volume'],
-                                                       index='date')
+        df = Share.objects.get(ticker=ticker).history.all().order_by('date').to_dataframe(
+            ['date', 'first', 'high', 'low', 'close', 'volume'],
+            index='date')
         df.rename(columns={"close": "Close", "first": "Open", "date": "Date", "high": "High", "low": "Low",
                            "volume": "Volume"}, inplace=True)
         return df

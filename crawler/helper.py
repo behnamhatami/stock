@@ -8,7 +8,7 @@ from io import StringIO
 import pandas as pd
 import requests
 
-from crawler.models import Share, ShareHistory
+from crawler.models import Share, ShareDailyHistory
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -61,12 +61,12 @@ def update_stock_history_item(share, days=None, batch_size=100):
         for index, row in df.iterrows():
             data = row.to_dict()
             data['share'] = share
-            if ShareHistory.objects.filter(share=share, date=data['date']).exists():
+            if ShareDailyHistory.objects.filter(share=share, date=data['date']).exists():
                 break
 
-            share_histories.append(ShareHistory(**data))
+            share_histories.append(ShareDailyHistory(**data))
 
-        ShareHistory.objects.bulk_create(share_histories, batch_size=batch_size)
+        ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
 
         share.save()
         logger.debug("history of {} in {} days added.".format(share.ticker, days))
