@@ -1,0 +1,5 @@
+Django==2.1.2
+pandas==0.23.4
+django_pandas==0.5.1
+requests==2.18.4
+talib==0.1.1
