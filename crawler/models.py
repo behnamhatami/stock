@@ -18,8 +18,8 @@ class ShareHistory(models.Model):
     date = models.DateField(null=False, blank=False)
 
     first = models.IntegerField(null=False, blank=False)
-    last = models.IntegerField(null=False, blank=False)
     close = models.IntegerField(null=False, blank=False)
+    tomorrow = models.IntegerField(null=False, blank=False)
     yesterday = models.IntegerField(null=False, blank=False)
 
     high = models.IntegerField(null=False, blank=False)
@@ -30,10 +30,10 @@ class ShareHistory(models.Model):
     value = models.BigIntegerField(null=False, blank=False)
 
     @staticmethod
-    def get_historical_data(share):
-        df = share.sharehistory_set.all().to_dataframe(['date', 'first', 'high', 'low', 'last', 'volume'],
+    def get_historical_data(ticker):
+        df = Share.objects.get(ticker=ticker).history.all().order_by('date').to_dataframe(['date', 'first', 'high', 'low', 'close', 'volume'],
                                                        index='date')
-        df.rename(columns={"last": "Close", "first": "Open", "date": "Date", "high": "High", "low": "Low",
+        df.rename(columns={"close": "Close", "first": "Open", "date": "Date", "high": "High", "low": "Low",
                            "volume": "Volume"}, inplace=True)
         return df
 
