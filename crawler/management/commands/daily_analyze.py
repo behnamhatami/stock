@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
 
+from crawler.analyzers.air_analyzer import AirAnalyzer
 from crawler.analyzers.buy_queue import BuyQueue
 from crawler.analyzers.cheap_rights_issue import CheapRightIssue
 from crawler.analyzers.macd_cross import MACDCross
@@ -18,7 +19,7 @@ class Command(BaseCommand):
     requires_migrations_checks = True
 
     def __init__(self, *args, **kwargs):
-        self.daily_analyzers = [VolumeAnalyzer(), BuyQueue(), CheapRightIssue(), NewComer(), MACDCross()]
+        self.daily_analyzers = [VolumeAnalyzer(), BuyQueue(), CheapRightIssue(), NewComer(), MACDCross(), AirAnalyzer()]
         super().__init__(*args, **kwargs)
 
     def add_arguments(self, parser):
