@@ -1,47 +1,32 @@
-import bulbea as bb
 import talib
 
 from crawler.models import ShareDailyHistory, Share
 
-
-class IranShare(bb.Share):
-    def update(self, start=None, end=None, latest=None, cache=False):
-        '''
-        Update the share with the latest available data.
-
-        :Example:
-
-        >>> import bulbea as bb
-        >>> share = bb.Share(source = 'YAHOO', ticker = 'AAPL')
-        >>> share.update()
-        '''
+try:
+    import bulbea as bb
 
 
-        self.data = Share.objects.get(ticker=self.ticker).daily_history
-        self.length = len(self.data)
-        self.attrs = list(self.data.columns)
+    class IranShare(bb.Share):
+        def update(self, start=None, end=None, latest=None, cache=False):
+            '''
+            Update the share with the latest available data.
+
+            :Example:
+
+            >>> import bulbea as bb
+            >>> share = bb.Share(source = 'YAHOO', ticker = 'AAPL')
+            >>> share.update()
+            '''
+
+            self.data = Share.objects.get(ticker=self.ticker).daily_history
+            self.length = len(self.data)
+            self.attrs = list(self.data.columns)
+except:
+    pass
 
 
-def signal_on_cross(ticker):
-    """
-    Generate `BUY`, `SELL`, or `NEUTRAL` signals based on cross point of MACD and signal lines.
-
-    :param pandas.DataFrame df: containing MACD and signal values for two consecutive days
-    :return:
-    """
-    data = Share.objects.get(ticker=ticker).daily_history
-    data['macd'], data['signal'], data['hist'] = talib.MACD(data['close'], fastperiod=12, slowperiod=26, signalperiod=9)
-
-    if data["macd"].iat[-1] <= data["signal"].iat[-1] and data["macd"].iat[-2] > data["signal"].iat[-2]:
-        return "SELL"
-    elif df["macd"].iat[-1] < data["signal"].iat[-1] and data["macd"].iat[-2] >= data["signal"].iat[-2]:
-        return "SELL"
-    elif data["macd"].iat[-1] >= data["signal"].iat[-1] and data["macd"].iat[-2] < data["signal"].iat[-2]:
-        return "BUY"
-    elif data["macd"].iat[-1] > data["signal"].iat[-1] and data["macd"].iat[-2] <= data["signal"].iat[-2]:
-        return "BUY"
-    else:
-        return "NEUTRAL"
+def is_upper_buy(history):
+    return ((history['High'] == history['Low']) & (history['Tomorrow'] > history['Yesterday'] * 1.048)).all()
 
 
 def signal_on_extremum(ticker, neutral_tol=0.0, forecast_tol=0.0):
