@@ -32,7 +32,8 @@ async def update_stock_history():
                    Share.objects.all()]
         await asyncio.gather(*futures)
         logger.info(
-            "{} tasks completed out of {}".format(len(list(filter(lambda future: future.done(), futures))), len(futures)))
+            "{} tasks completed out of {}".format(len(list(filter(lambda future: future.done(), futures))),
+                                                  len(futures)))
 
 
 def update_stock_history_item(share, days=None, batch_size=100):
@@ -52,6 +53,7 @@ def update_stock_history_item(share, days=None, batch_size=100):
                             params=params)
 
     if response.status_code != 200:
+        logger.error("Http Error {}".format(response.status_code))
         return
 
     labels = ['date', 'high', 'low', 'tomorrow', 'close', 'first', 'yesterday', 'value', 'volume', 'count']
@@ -87,8 +89,22 @@ async def update_stock_list(batch_size=100):
     if response.status_code != 200:
         return
 
-    df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
+    '''
+        separated with @ text
+        part 0: ?
+        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index', 
+        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status', 
+        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume', 
+        'third_stock_value', 'third_stock_count']
+        part 2: ?
+        part 3; ?
+        part 4: ?
+    '''
+
+    df = pd.read_csv(StringIO(response.text.split("@")[4]), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
+    print(df)
+    return
 
     share_list = []
     for index, row in df.iterrows():
@@ -109,3 +125,59 @@ async def update_stock_list(batch_size=100):
             share_list.append(share)
 
     Share.objects.bulk_create(share_list, batch_size=100)
+
+
+async def get_day_price(share):
+    headers = HEADERS.copy()
+    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
+    headers['X-Requested-With'] = 'XMLHttpRequest'
+
+    params = (
+        ('i', share.id),
+    )
+
+    response = requests.get('http://www.tsetmc.com/tsev2/chart/data/IntraDayPrice.aspx', headers=headers, params=params)
+
+    if response.status_code != 200:
+        return
+
+    labels = ['time', 'high', 'low', 'open', 'close', 'volume']
+    df = pd.read_csv(StringIO(response.text), sep=',', lineterminator=';', names=labels)
+    df = df.where((pd.notnull(df)), None)
+    print(df)
+
+
+async def get_current_info(share):
+    headers = HEADERS.copy()
+    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
+    headers['X-Requested-With'] = 'XMLHttpRequest'
+
+    params = (
+        ('i', share.id),
+        ('c', '27 '),
+    )
+
+    response = requests.get('http://www.tsetmc.com/tsev2/data/instinfofast.aspx', headers=headers, params=params)
+
+    if response.status_code != 200:
+        return
+
+    print(response.text, end='\n\n')
+    print(response.text.split(";")[3])
+    '''
+        separated with ; text
+        part 0: ['last_transaction_time', 'state', 'last', 'tomorrow', 'first', 'yesterday', 'max_range', 'min_range', 
+        'count', 'volume', 'value', '?', 'date', 'time']
+        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index', 
+        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status', 
+        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume', 
+        'third_stock_value', 'third_stock_count']
+        part 2: ['buy_count', 'buy_volume', 'buy_order', 'sell_order', 'sell_order', 'sell_count']
+        part 3; ?
+        part 4: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal', 
+        'buy_count_legal', '?', 'sell_count_personal', 'sell_count_legal']
+        part 5: stocks from same group ['last', 'tomorrow', 'yesterday', 'count', 'volume', 'value']
+    '''
+#    df = pd.read_csv(StringIO(response.text.split("@")[0]), sep=',', lineterminator=';', header=None)
+#    df = df.where((pd.notnull(df)), None)
+#    print(df)
