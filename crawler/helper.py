@@ -101,10 +101,8 @@ async def update_stock_list(batch_size=100):
         part 4: ?
     '''
 
-    df = pd.read_csv(StringIO(response.text.split("@")[4]), sep=',', lineterminator=';', header=None)
+    df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
-    print(df)
-    return
 
     share_list = []
     for index, row in df.iterrows():
