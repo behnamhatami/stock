@@ -72,7 +72,7 @@ def update_stock_history_item(share, days=None, batch_size=100):
     ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
 
     share.save()
-    logger.debug("history of {} in {} days added.".format(share.ticker, days))
+    logger.debug("history of {} in {} days added.".format(share.ticker, len(share_histories)))
 
 
 async def update_stock_list(batch_size=100):
@@ -92,9 +92,9 @@ async def update_stock_list(batch_size=100):
     '''
         separated with @ text
         part 0: ?
-        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index', 
-        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status', 
-        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume', 
+        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index',
+        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status',
+        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume',
         'third_stock_value', 'third_stock_count']
         part 2: ?
         part 3; ?
@@ -104,7 +104,7 @@ async def update_stock_list(batch_size=100):
     df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
 
-    share_list = []
+    new_list, update_list = [], []
     for index, row in df.iterrows():
         id = row[0]
         try:
@@ -117,12 +117,11 @@ async def update_stock_list(batch_size=100):
         share.id = row[0]
         share.description = row[3]
 
-        if share.id:
-            share.save()
-        else:
-            share_list.append(share)
+        (update_list if share.id else new_list).append(share)
 
-    Share.objects.bulk_create(share_list, batch_size=100)
+    Share.objects.bulk_create(new_list, batch_size=100)
+    Share.objects.bulk_update(update_list, ['eps', 'ticker', 'id', 'description'], batch_size=100)
+    logger.debug("update stock list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
 async def get_day_price(share):
@@ -164,15 +163,15 @@ async def get_current_info(share):
     print(response.text.split(";")[3])
     '''
         separated with ; text
-        part 0: ['last_transaction_time', 'state', 'last', 'tomorrow', 'first', 'yesterday', 'max_range', 'min_range', 
+        part 0: ['last_transaction_time', 'state', 'last', 'tomorrow', 'first', 'yesterday', 'max_range', 'min_range',
         'count', 'volume', 'value', '?', 'date', 'time']
-        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index', 
-        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status', 
-        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume', 
+        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index',
+        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status',
+        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume',
         'third_stock_value', 'third_stock_count']
         part 2: ['buy_count', 'buy_volume', 'buy_order', 'sell_order', 'sell_order', 'sell_count']
         part 3; ?
-        part 4: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal', 
+        part 4: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal',
         'buy_count_legal', '?', 'sell_count_personal', 'sell_count_legal']
         part 5: stocks from same group ['last', 'tomorrow', 'yesterday', 'count', 'volume', 'value']
     '''

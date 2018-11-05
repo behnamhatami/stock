@@ -31,6 +31,22 @@ class Share(models.Model):
                            "volume": "Volume", "yesterday": "Yesterday", 'tomorrow': "Tomorrow"}, inplace=True)
         return df
 
+    @cached_property
+    def daily_history_normalized(self):
+        df = self.daily_history.copy()
+        df['diff'] = df['Tomorrow'] - df['Yesterday'].shift(-1)
+        df['diff'].iloc[-1] = 0
+
+        df['acc_diff'] = df['diff'][::-1].cumsum()[::-1]
+        df['Close'] -= df['acc_diff']
+        df['Open'] -= df['acc_diff']
+        df['High'] -= df['acc_diff']
+        df['Low'] -=  df['acc_diff']
+        df['Tomorrow'] -= df['acc_diff']
+        df['Yesterday'] -= df['acc_diff']
+
+        return df
+
     def __str__(self):
         return self.ticker
 
@@ -58,3 +74,9 @@ class ShareDailyHistory(models.Model):
 
     def __str__(self):
         return "{}: {}".format(self.share, self.date)
+
+def bulk_update(objects, fields, batch_size=None):
+    for object in objects:
+        object.save()
+
+Share.objects.bulk_update = bulk_update
