@@ -8,9 +8,9 @@ class NewComer(Analyzer):
     def __init__(self, threshold=30):
         self.threshold = threshold
 
-    def analyze(self, share):
-        if share.is_rights_issue or share.daily_history.iloc[0]['Date'] <= date.today() - timedelta(days=self.threshold) or share.daily_history.shape[0] == 1:
+    def analyze(self, share, daily_history, today_history):
+        if share.is_rights_issue or daily_history.iloc[0]['Date'] <= date.today() - timedelta(days=self.threshold) or daily_history.shape[0] == 1:
             return
 
-        if is_upper_buy(share.daily_history[:-1]) and not is_upper_buy(share.daily_history[-1:]):
-            return "{} is a new comer with price {}".format(share, share.daily_history.iloc[-1]['Tomorrow'])
+        if is_upper_buy(daily_history[:-1]) and not is_upper_buy(daily_history[-1:]):
+            return {"new commer drop": {"price": daily_history.iloc[-1]['Tomorrow']}}

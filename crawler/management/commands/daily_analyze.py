@@ -30,7 +30,11 @@ class Command(BaseCommand):
         for share in Share.objects.all():
             if share.daily_history.shape[0] > 0 and share.daily_history.iloc[-1]['Date'] >= date.today() - timedelta(
                     days=Share.DAY_OFFSET + 1):
+                results = dict()
                 for analyzer in self.daily_analyzers:
-                    result = analyzer.analyze(share)
+                    result = analyzer.analyze(share, share.daily_history_normalized, None)
                     if result:
-                        self.stdout.write(result)
+                        results.update(result)
+
+                if results:
+                    self.stdout.write("{}".format({share.ticker: results}))

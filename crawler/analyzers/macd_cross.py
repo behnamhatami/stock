@@ -9,18 +9,15 @@ class MACDCross(Analyzer):
         self.slow_period = slow_period
         self.signal_period = signal_period
 
-    def analyze(self, share):
-        data = share.daily_history
-        data['macd'], data['signal'], data['hist'] = talib.MACD(data['Close'], fastperiod=self.fast_period, slowperiod=self.slow_period,
+    def analyze(self, share, daily_history, today_history):
+        daily_history['macd'], daily_history['signal'], daily_history['hist'] = talib.MACD(daily_history['Close'], fastperiod=self.fast_period, slowperiod=self.slow_period,
                                                                 signalperiod=self.signal_period)
 
-        if data["macd"].iloc[-1] <= data["signal"].iloc[-1] and data["macd"].iloc[-2] > data["signal"].iloc[-2]:
-            return "{} cross in MACD dec".format(share)
-        elif data["macd"].iloc[-1] < data["signal"].iloc[-1] and data["macd"].iloc[-2] >= data["signal"].iloc[-2]:
-            return "{} cross in MACD dec".format(share)
-        elif data["macd"].iloc[-1] >= data["signal"].iloc[-1] and data["macd"].iloc[-2] < data["signal"].iloc[-2]:
-            return "{} cross in MACD asc".format(share)
-        elif data["macd"].iloc[-1] > data["signal"].iloc[-1] and data["macd"].iloc[-2] <= data["signal"].iloc[-2]:
-            return "{} cross in MACD asc".format(share)
-
-
+        if daily_history["macd"].iloc[-1] <= daily_history["signal"].iloc[-1] and daily_history["macd"].iloc[-2] > daily_history["signal"].iloc[-2]:
+            return {"MACD": {"trend": "dec"}}
+        elif daily_history["macd"].iloc[-1] < daily_history["signal"].iloc[-1] and daily_history["macd"].iloc[-2] >= daily_history["signal"].iloc[-2]:
+            return {"MACD": {"trend": "dec"}}
+        elif daily_history["macd"].iloc[-1] >= daily_history["signal"].iloc[-1] and daily_history["macd"].iloc[-2] < daily_history["signal"].iloc[-2]:
+            return {"MACD": {"trend": "asc"}}
+        elif daily_history["macd"].iloc[-1] > daily_history["signal"].iloc[-1] and daily_history["macd"].iloc[-2] <= daily_history["signal"].iloc[-2]:
+            return {"MACD": {"trend": "asc"}}
