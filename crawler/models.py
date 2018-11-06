@@ -34,16 +34,16 @@ class Share(models.Model):
     @cached_property
     def daily_history_normalized(self):
         df = self.daily_history.copy()
-        df['diff'] = df['Tomorrow'] - df['Yesterday'].shift(-1)
-        df['diff'].iloc[-1] = 0
+        df['diff'] = df['Tomorrow'] / df['Yesterday'].shift(-1)
+        df['diff'].iloc[-1] = 1
 
-        df['acc_diff'] = df['diff'][::-1].cumsum()[::-1]
-        df['Close'] -= df['acc_diff']
-        df['Open'] -= df['acc_diff']
-        df['High'] -= df['acc_diff']
-        df['Low'] -=  df['acc_diff']
-        df['Tomorrow'] -= df['acc_diff']
-        df['Yesterday'] -= df['acc_diff']
+        df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
+        df['Close'] /= df['acc_diff']
+        df['Open'] /= df['acc_diff']
+        df['High'] /= df['acc_diff']
+        df['Low'] /=  df['acc_diff']
+        df['Tomorrow'] /= df['acc_diff']
+        df['Yesterday'] /= df['acc_diff']
 
         return df
 
