@@ -10,6 +10,7 @@ from crawler.analyzers.macd_cross import MACDCross
 from crawler.analyzers.new_comer import NewComer
 from crawler.analyzers.volume_analyzer import VolumeAnalyzer
 from crawler.models import Share
+from django.conf import settings
 
 import pandas as pd
 
@@ -41,15 +42,17 @@ class Command(BaseCommand):
                         results.update(result)
 
                 if results:
-                    row_list.append({"ticker": share.ticker, **results})
+                    ticker_link = '<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={id}">{ticker}</a>'.format(id=share.id, ticker=share.ticker)
+                    row_list.append({"ticker": ticker_link, **results})
                     self.stdout.write("{}".format({share.ticker: results}))
 
 
         df = pd.DataFrame(row_list)
+        pd.set_option('display.max_colwidth', -1)
 
         from django.template import loader
         template = loader.get_template('daily_report.html')
-        html_out = template.render({'date': date.today() - timedelta(days=Share.DAY_OFFSET + 1), 'daily_report_dataframe': df.to_html()})
+        html_out = template.render({'date': date.today() - timedelta(days=Share.DAY_OFFSET + 1), 'daily_report_dataframe': df.to_html(escape=False)})
 
-        with open("report.html", 'w') as f:
+        with open(settings.BASE_DIR + "/report.html", 'w') as f:
             f.write(html_out)

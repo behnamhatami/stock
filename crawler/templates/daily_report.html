@@ -3,9 +3,26 @@
 <head lang="en">
     <meta charset="UTF-8">
     <title> daily report {{ date }}</title>
+    <style>
+  		th {
+  			background-color: #4CAF50;
+  			color: white;
+  		}
+  	 	tr:nth-child(even) {background-color: #f9f9f9;}
+  		tr:hover {background-color: #d3d3d3;}
+  		th, td {
+  			border-bottom: 1px solid #ddd;
+  			padding: 15px;
+  		}
+  		table, th, td {
+  			border: 1px solid black;
+  		}
+  		table {
+  			border-collapse: collapse;
+  		}
+  	</style>
 </head>
 <body>
-    <h2>Daily Report Stock</h2>
      {{ daily_report_dataframe | safe}}
 </body>
 </html>
