@@ -16,5 +16,4 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
             loop = asyncio.get_event_loop()
             loop.run_until_complete(update_stock_list())
-            loop.close()
             self.stdout.write("Stock list updated.")
