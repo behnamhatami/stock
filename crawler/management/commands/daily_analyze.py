@@ -39,20 +39,24 @@ class Command(BaseCommand):
                 for analyzer in self.daily_analyzers:
                     result = analyzer.analyze(share, share.daily_history_normalized, None)
                     if result:
-                        results.update(result)
+                        results.update({key: str(value) for key, value in result.items()})
 
                 if results:
-                    ticker_link = '<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={id}">{ticker}</a>'.format(id=share.id, ticker=share.ticker)
+                    ticker_link = '<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={id}">{ticker}</a>'.format(
+                        id=share.id, ticker=share.ticker)
                     row_list.append({"ticker": ticker_link, **results})
                     self.stdout.write("{}".format({share.ticker: results}))
 
 
-        df = pd.DataFrame(row_list)
-        pd.set_option('display.max_colwidth', -1)
+        if row_list:
+            df = pd.DataFrame(row_list)
+            df.sort_values(by=list(df), inplace=True)
+            pd.set_option('display.max_colwidth', -1)
 
-        from django.template import loader
-        template = loader.get_template('daily_report.html')
-        html_out = template.render({'date': date.today() - timedelta(days=Share.DAY_OFFSET + 1), 'daily_report_dataframe': df.to_html(escape=False)})
+            from django.template import loader
+            template = loader.get_template('daily_report.html')
+            html_out = template.render({'date': date.today() - timedelta(days=Share.DAY_OFFSET + 1),
+                                        'daily_report_dataframe': df.to_html(escape=False)})
 
-        with open(settings.BASE_DIR + "/report.html", 'w') as f:
-            f.write(html_out)
+            with open(settings.BASE_DIR + "/report.html", 'w') as f:
+                f.write(html_out)

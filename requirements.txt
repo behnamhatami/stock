@@ -1,7 +1,7 @@
-Django==2.1.2
-pandas==0.23.4
-django_pandas==0.5.1
-requests==2.18.4
+Django==3.0.1
+pandas==0.25.3
+django_pandas==0.6.1
+requests==2.22.0
 talib==0.1.1
-psycopg2==2.7.6.1
+psycopg2==2.8.4
 django_cron==0.5.1

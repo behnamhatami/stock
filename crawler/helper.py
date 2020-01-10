@@ -11,7 +11,7 @@ import requests
 from crawler.models import Share, ShareDailyHistory
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:61.0) Gecko/20100101 Firefox/61.0',
@@ -25,15 +25,21 @@ HEADERS = {
 }
 
 
-async def update_stock_history():
-    loop = asyncio.get_event_loop()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as pool:
-        futures = [loop.run_in_executor(pool, partial(update_stock_history_item, share)) for share in
+def update_stock_history():
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        futures = [pool.submit(partial(update_stock_history_item, share)) for share in
                    Share.objects.all()]
-        await asyncio.gather(*futures)
+        
+        success, error = 0, 0
+        for index, future in enumerate(concurrent.futures.as_completed(futures)):
+            if future.exception():
+                error += 1
+            else:
+                success += 1
+            logger.info(" {}%".format(round((index+1)/len(futures) * 100, 2)))
+            
         logger.info(
-            "{} tasks completed out of {}".format(len(list(filter(lambda future: future.done(), futures))),
-                                                  len(futures)))
+            "{} tasks completed out of {}".format(success, len(futures)))
 
 
 def update_stock_history_item(share, days=None, batch_size=100):
@@ -54,7 +60,7 @@ def update_stock_history_item(share, days=None, batch_size=100):
 
     if response.status_code != 200:
         logger.error("Http Error {}".format(response.status_code))
-        return
+        raise Exception("Http Error: {}".format(response.status_code))
 
     labels = ['date', 'high', 'low', 'tomorrow', 'close', 'first', 'yesterday', 'value', 'volume', 'count']
     df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
@@ -72,10 +78,10 @@ def update_stock_history_item(share, days=None, batch_size=100):
     ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
 
     share.save()
-    logger.debug("history of {} in {} days added.".format(share.ticker, len(share_histories)))
+    logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
 
 
-async def update_stock_list(batch_size=100):
+def update_stock_list(batch_size=100):
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'
 
@@ -121,10 +127,10 @@ async def update_stock_list(batch_size=100):
 
     Share.objects.bulk_create(new_list, batch_size=100)
     Share.objects.bulk_update(update_list, ['eps', 'ticker', 'id', 'description'], batch_size=100)
-    logger.debug("update stock list, {} added, {} updated.".format(len(new_list), len(update_list)))
+    logger.info("update stock list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
-async def get_day_price(share):
+def get_day_price(share):
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
     headers['X-Requested-With'] = 'XMLHttpRequest'
@@ -144,7 +150,7 @@ async def get_day_price(share):
     print(df)
 
 
-async def get_current_info(share):
+def get_current_info(share):
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
     headers['X-Requested-With'] = 'XMLHttpRequest'

@@ -13,6 +13,5 @@ class Command(BaseCommand):
     requires_migrations_checks = True
 
     def handle(self, *args, **options):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(update_stock_history())
+        update_stock_history()
         self.stdout.write("Stock history updated.")
