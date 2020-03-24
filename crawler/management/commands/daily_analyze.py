@@ -3,12 +3,7 @@ from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
 
-from crawler.analyzers.air_analyzer import AirAnalyzer
-from crawler.analyzers.buy_queue import BuyQueue
-from crawler.analyzers.cheap_rights_issue import CheapRightIssue
-from crawler.analyzers.macd_cross import MACDCross
-from crawler.analyzers.new_comer import NewComer
-from crawler.analyzers.volume_analyzer import VolumeAnalyzer
+from crawler.analyzers import *
 from crawler.models import Share
 from django.conf import settings
 
@@ -22,7 +17,8 @@ class Command(BaseCommand):
     requires_migrations_checks = True
 
     def __init__(self, *args, **kwargs):
-        self.daily_analyzers = [VolumeAnalyzer(), BuyQueue(), CheapRightIssue(), NewComer(), MACDCross(), AirAnalyzer()]
+        # self.daily_analyzers = [VolumeAnalyzer(), BuyQueue(), CheapRightIssue(), GoodPriceRightIssue(), NewComerDrop(), MACDCross(), AirAnalyzer()]
+        self.daily_analyzers = [GoodPriceRightIssue()]
         super().__init__(*args, **kwargs)
 
     def add_arguments(self, parser):
@@ -32,12 +28,11 @@ class Command(BaseCommand):
         Share.DAY_OFFSET = options.get('days', 0)
 
         row_list = []
-        for share in Share.objects.all():
-            if share.daily_history.shape[0] > 0 and share.daily_history.iloc[-1]['Date'] >= date.today() - timedelta(
-                    days=Share.DAY_OFFSET + 1):
+        for share in Share.objects.all().order_by('ticker'):
+            if share.history_size > 0 and share.last_day_history['Date'] >= Share.get_today() - timedelta(1):
                 results = dict()
                 for analyzer in self.daily_analyzers:
-                    result = analyzer.analyze(share, share.daily_history_normalized, None)
+                    result = analyzer.analyze(share)
                     if result:
                         results.update({key: str(value) for key, value in result.items()})
 
@@ -51,7 +46,7 @@ class Command(BaseCommand):
         if row_list:
             df = pd.DataFrame(row_list)
             df.sort_values(by=list(df), inplace=True)
-            pd.set_option('display.max_colwidth', -1)
+            pd.set_option('display.max_colwidth', None)
 
             from django.template import loader
             template = loader.get_template('daily_report.html')

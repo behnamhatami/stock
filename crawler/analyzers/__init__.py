@@ -1,0 +1,7 @@
+from crawler.analyzers.air_analyzer import AirAnalyzer
+from crawler.analyzers.buy_queue import BuyQueue
+from crawler.analyzers.cheap_rights_issue import CheapRightIssue
+from crawler.analyzers.macd_cross import MACDCross
+from crawler.analyzers.new_comer_drop import NewComerDrop
+from crawler.analyzers.volume_analyzer import VolumeAnalyzer
+from crawler.analyzers.good_price_rights_issue import GoodPriceRightIssue

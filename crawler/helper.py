@@ -25,8 +25,8 @@ HEADERS = {
 }
 
 
-def update_stock_history():
-    with concurrent.futures.ThreadPoolExecutor() as pool:
+def update_stock_history(max_workers=100):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(partial(update_stock_history_item, share)) for share in
                    Share.objects.all()]
         
@@ -36,7 +36,7 @@ def update_stock_history():
                 error += 1
             else:
                 success += 1
-            logger.info(" {}%".format(round((index+1)/len(futures) * 100, 2)))
+            logger.info("{}/{} out of {}({}%)".format(success, index+1, len(futures), round((index+1)/len(futures) * 100, 2)))
             
         logger.info(
             "{} tasks completed out of {}".format(success, len(futures)))
@@ -62,6 +62,7 @@ def update_stock_history_item(share, days=None, batch_size=100):
         logger.error("Http Error {}".format(response.status_code))
         raise Exception("Http Error: {}".format(response.status_code))
 
+
     labels = ['date', 'high', 'low', 'tomorrow', 'close', 'first', 'yesterday', 'value', 'volume', 'count']
     df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
     df = df.where((pd.notnull(df)), None)
@@ -79,7 +80,7 @@ def update_stock_history_item(share, days=None, batch_size=100):
 
     share.save()
     logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
-
+   
 
 def update_stock_list(batch_size=100):
     headers = HEADERS.copy()
