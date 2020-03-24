@@ -10,8 +10,11 @@ from django_pandas.managers import DataFrameManager
 class Share(models.Model):
     DAY_OFFSET = 0
 
+    def get_today():
+        return date.today() - timedelta(days=Share.DAY_OFFSET)
+
     id = models.BigIntegerField(null=False, blank=False, primary_key=True)
-    ticker = models.CharField(max_length=256)
+    ticker = models.CharField(unique=True, max_length=256)
     description = models.CharField(max_length=256)
 
     eps = models.IntegerField(null=True, blank=False)
@@ -22,9 +25,21 @@ class Share(models.Model):
         return self.ticker[-1] == 'ح'
 
     @cached_property
-    def daily_history(self):
+    def is_buy_option(self):
+        return self.ticker[0] == 'ض'
+
+    @cached_property
+    def is_sell_option(self):
+        return self.ticker[0] == 'ه'
+
+    @cached_property
+    def is_special(self):
+        return self.is_rights_issue or self.is_buy_option or self.is_sell_option
+
+    @cached_property
+    def raw_daily_history(self):
         df = self.history.filter(
-            date__lt=date.today() - timedelta(days=Share.DAY_OFFSET)).all().order_by(
+            date__lt=Share.get_today()).all().order_by(
             'date').to_dataframe(
             ['date', 'first', 'high', 'low', 'close', 'volume', 'yesterday', 'tomorrow'])
         df.rename(columns={"close": "Close", "first": "Open", "date": "Date", "high": "High", "low": "Low",
@@ -32,20 +47,32 @@ class Share(models.Model):
         return df
 
     @cached_property
-    def daily_history_normalized(self):
-        df = self.daily_history.copy()
+    def daily_history(self):
+        df = self.raw_daily_history.copy()
         df['diff'] = df['Tomorrow'] / df['Yesterday'].shift(-1)
-        df['diff'].iloc[-1] = 1
+        if(df.shape[0] > 0):
+            df['diff'].iloc[-1] = 1
 
-        df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
-        df['Close'] /= df['acc_diff']
-        df['Open'] /= df['acc_diff']
-        df['High'] /= df['acc_diff']
-        df['Low'] /=  df['acc_diff']
-        df['Tomorrow'] /= df['acc_diff']
-        df['Yesterday'] /= df['acc_diff']
+            df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
+            df['Close'] /= df['acc_diff']
+            df['Open'] /= df['acc_diff']
+            df['High'] /= df['acc_diff']
+            df['Low'] /=  df['acc_diff']
+            df['Tomorrow'] /= df['acc_diff']
+            df['Yesterday'] /= df['acc_diff']
 
         return df
+
+    def day_history(self, loc):
+        return self.daily_history.iloc[loc]
+
+    @cached_property
+    def last_day_history(self):
+        return self.day_history(-1)
+
+    @cached_property
+    def history_size(self):
+        return self.daily_history.shape[0]
 
     def __str__(self):
         return self.ticker
