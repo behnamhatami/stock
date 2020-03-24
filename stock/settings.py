@@ -79,7 +79,10 @@ WSGI_APPLICATION = 'stock.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR + 'stock',
+        'NAME': BASE_DIR + "/"+ 'stock.sql',
+        'OPTIONS': {
+            'timeout': 1000,  # in seconds
+        },
         'USER': '',
         'PASSWORD': '',
         'HOST': '',
