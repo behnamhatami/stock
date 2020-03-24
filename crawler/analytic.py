@@ -25,8 +25,11 @@ except:
     pass
 
 
-def is_upper_buy(history):
-    return ((history['High'] == history['Low']) & (history['Tomorrow'] > history['Yesterday'] * 1.048)).all()
+def is_upper_buy_closed(history):
+    return (history['Close'] > history['Yesterday'] * 1.048).all()
+
+def is_upper_buy_all_day(history):
+    return (history['Low'] > history['Yesterday'] * 1.048).all()
 
 
 def signal_on_extremum(ticker, neutral_tol=0.0, forecast_tol=0.0):
