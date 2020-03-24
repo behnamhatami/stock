@@ -1,13 +1,15 @@
 from crawler.analyzers.analyzer import Analyzer
 
-
 class VolumeAnalyzer(Analyzer):
     def __init__(self, threshold=10):
         self.threshold = threshold
 
-    def analyze(self, share, daily_history, today_history):
-        if daily_history.shape[0] < self.threshold:
+    def analyze(self, share):
+        if share.history_size < self.threshold + 1:
             return None
 
-        if daily_history.iloc[-self.threshold - 1:-1]['Volume'].mean() * 2 < daily_history.iloc[-1]['Volume']:
-            return {"high volume": {"prev_volume": daily_history.iloc[-self.threshold - 1:-1]['Volume'].mean(), "current_volume": daily_history.iloc[-1]['Volume']}}
+        last_month_volume = share.daily_history[-self.threshold - 1: -1]['Volume'].mean()
+        last_day_volume = share.last_day_history['Volume']
+
+        if last_month_volume * 2 < last_day_volume:
+            return {"high volume": {"last_month_volume": last_month_volume, "last_day_volume": last_day_volume}}

@@ -9,7 +9,8 @@ class MACDCross(Analyzer):
         self.slow_period = slow_period
         self.signal_period = signal_period
 
-    def analyze(self, share, daily_history, today_history):
+    def analyze(self, share):
+        daily_history = share.daily_history
         daily_history['macd'], daily_history['signal'], daily_history['hist'] = talib.MACD(daily_history['Close'], fastperiod=self.fast_period, slowperiod=self.slow_period,
                                                                 signalperiod=self.signal_period)
 

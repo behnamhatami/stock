@@ -1,27 +1,30 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from crawler.analyzers.analyzer import Analyzer
+from crawler.models import Share
 
 
 class AirAnalyzer(Analyzer):
     def __init__(self, threshold=10):
         self.threshold = threshold
 
-    def analyze(self, share, daily_history, today_history):
-        if share.is_rights_issue or daily_history.iloc[0]['Date'] >= date.today() - timedelta(
+    def analyze(self, share):
+        history = share.daily_history
+
+        if share.is_rights_issue or share.day_history(0)['Date'] >= Share.get_today() - timedelta(
                 days=self.threshold):
             return
 
-        if daily_history['High'].max() == daily_history.iloc[-1]['High']:
-            return {"aired": {"price": daily_history.iloc[-1]['High']}}
+        if history['High'].max() == share.last_day_history['High']:
+            return {"aired": {"price": share.last_day_history['High']}}
 
-        if daily_history['Low'].min() == daily_history.iloc[-1]['Low']:
-            return {"dumped": {"price": daily_history.iloc[-1]['Low']}}
+        if history['Low'].min() == share.last_day_history['Low']:
+            return {"dumped": {"price": share.last_day_history['Low']}}
 
-        if daily_history[daily_history['Date'] >= date.today() - timedelta(days=30)]['Low'].min() == \
-                daily_history.iloc[-1]['Low']:
-            return {"monthly lower bound": {"price": daily_history.iloc[-1]['Low']}}
+        if history[history['Date'] >= Share.get_today() - timedelta(days=30)]['Low'].min() == \
+                share.last_day_history['Low']:
+            return {"monthly lower bound": {"price": share.last_day_history['Low']}}
 
-        if daily_history[daily_history['Date'] >= date.today() - timedelta(days=180)]['Low'].min() == \
-                daily_history.iloc[-1]['Low']:
-            return {"half year lower bound": {"price": daily_history.iloc[-1]['Low']}}
+        if history[history['Date'] >= Share.get_today() - timedelta(days=180)]['Low'].min() == \
+                share.last_day_history['Low']:
+            return {"half year lower bound": {"price": share.last_day_history['Low']}}

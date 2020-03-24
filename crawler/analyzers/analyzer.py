@@ -3,5 +3,5 @@ from abc import ABC, abstractmethod
 
 class Analyzer(ABC):
     @abstractmethod
-    def analyze(self, share, daily_history, today_history):
+    def analyze(self, share):
         raise NotImplementedError()
