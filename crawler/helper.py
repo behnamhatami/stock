@@ -2,10 +2,11 @@ import asyncio
 import concurrent
 import logging
 from datetime import datetime, timezone
-from functools import partial
 from io import StringIO
+from persiantools import characters
 
 import pandas as pd
+from retry import retry
 import requests
 
 from crawler.models import Share, ShareDailyHistory
@@ -24,24 +25,77 @@ HEADERS = {
     'Cache-Control': 'no-cache',
 }
 
-
-def update_stock_history(max_workers=100):
+def run_jobs(jobs, max_workers=100):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(partial(update_stock_history_item, share)) for share in
-                   Share.objects.all()]
+        futures = [pool.submit(job) for job in jobs]
         
         success, error = 0, 0
         for index, future in enumerate(concurrent.futures.as_completed(futures)):
             if future.exception():
+                logger.exception(future.exception())
                 error += 1
             else:
                 success += 1
-            logger.info("{}/{} out of {}({}%)".format(success, index+1, len(futures), round((index+1)/len(futures) * 100, 2)))
+            if index % 100 == 99:
+                logger.info("{}/{} out of {}({}%)".format(success, index+1, len(futures), round((index+1)/len(futures) * 100, 2)))
             
         logger.info(
             "{} tasks completed out of {}".format(success, len(futures)))
 
 
+@retry(tries=4, delay=1, backoff=2)
+def search_stock(keyword):
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'X-Requested-With': 'XMLHttpRequest',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Referer': 'http://www.tsetmc.com/Loader.aspx?ParTree=15',
+        }
+
+        response = requests.get('http://www.tsetmc.com/tsev2/data/search.aspx?skey={}'.format(keyword), headers=headers)
+
+        if response.status_code != 200:
+            raise Exception("Http Error: {}".format(response.status_code))
+
+        if len(response.text) == 0:
+            return
+
+        lables = ['ticker', 'description', 'id', '', '', '', 'bazaar type', 'enable', 'bazaar', 'bazaar']
+        df = pd.read_csv(StringIO(response.text), sep=',', lineterminator=';', header=None)
+        df = df.where((pd.notnull(df)), None)
+
+
+        new_list, update_list = [], []
+        for index, row in df.iterrows():
+            id = row[2]
+            try:
+                share = Share.objects.get(id=id)
+            except Share.DoesNotExist:
+                share = Share()
+
+            (update_list if share.id else new_list).append(share)
+                
+            share.ticker = characters.ar_to_fa(str(row[0]))
+            share.description = characters.ar_to_fa(row[1])
+            share.id = row[2]
+            share.bazaar_type = row[6]
+            share.enable = row[7]        
+
+        if new_list:
+            logger.info("new stocks: {}".format(new_list))
+        Share.objects.bulk_create(new_list, batch_size=100)
+        Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable'], batch_size=100)
+        if new_list:
+            logger.info("update stock list, {} added, {} updated.".format(len(new_list), len(update_list)))
+    except Exception as e:
+        logger.exception(e)
+        raise e
+
+@retry(tries=4, delay=1, backoff=2)
 def update_stock_history_item(share, days=None, batch_size=100):
     if days is None:
         days = (datetime.now(timezone.utc) - share.last_update).days + 1 if share.last_update else 999999
@@ -59,7 +113,6 @@ def update_stock_history_item(share, days=None, batch_size=100):
                             params=params)
 
     if response.status_code != 200:
-        logger.error("Http Error {}".format(response.status_code))
         raise Exception("Http Error: {}".format(response.status_code))
 
 
@@ -79,9 +132,11 @@ def update_stock_history_item(share, days=None, batch_size=100):
     ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
 
     share.save()
-    logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
+    if share_histories:
+        logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
    
 
+@retry(tries=4, delay=1, backoff=2)
 def update_stock_list(batch_size=100):
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'
@@ -94,40 +149,48 @@ def update_stock_list(batch_size=100):
     response = requests.get('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx', headers=headers, params=params)
 
     if response.status_code != 200:
-        return
+        raise Exception("Http Error: {}".format(response.status_code))
+
 
     '''
         separated with @ text
         part 0: ?
-        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_stock_status', 'main_stock_index',
-        'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status',
-        'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume',
-        'third_stock_value', 'third_stock_count']
-        part 2: ?
-        part 3; ?
+        part 1: general info of bazaar  ['date and time of last_transaction', 'boorse_status', 'boorse_index',
+        'boorse_index_diff', 'boorse_market cap', 'boorse_volume', 'boorse_value', 'boorse_count', 'faraboorse_status',
+        'faraboorse_volume', 'faraboorse_value', 'faraboorse_count', 'moshtaghe_status', 'moshtaghe_volume',
+        'moshtaghe_value', 'moshtaghe_count']
+        part 2: ['id', 'IR', 'ticker', 'description', '?', 'first', 'tomorrow', 'last', 'count', 'volume', 'value', 'low', 'high', 'yesterday', 'eps', 'base volume', '', 'bazaar type', 'group', 'max_price_possible', 'min_price_possible', 'number of stock', 'bazaar group']
+        part 3; ['id', 'order', 'sell_count', 'buy_count', 'buy_price', 'sell_price', 'buy_volume', 'sell_volume']
         part 4: ?
     '''
-
+    
     df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
 
     new_list, update_list = [], []
     for index, row in df.iterrows():
-        id = row[0]
         try:
-            share = Share.objects.get(id=id)
+            share = Share.objects.get(id=row[0])
         except Share.DoesNotExist:
             share = Share()
 
-        share.eps = row[14]
-        share.ticker = row[2]
-        share.id = row[0]
-        share.description = row[3]
-
         (update_list if share.id else new_list).append(share)
-
+        
+        share.enable = True
+        share.id = row[0]
+        share.ticker = characters.ar_to_fa(str(row[2]))
+        share.description = characters.ar_to_fa(row[3])
+        share.eps = row[14]
+        share.base_volume = row[15]
+        share.bazaar_type = row[17]
+        share.group = row[18]
+        share.total_count = row[21]
+        share.bazaar_group = row[22]
+        
+    if new_list:
+        logger.info("new stocks: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=100)
-    Share.objects.bulk_update(update_list, ['eps', 'ticker', 'id', 'description'], batch_size=100)
+    Share.objects.bulk_update(update_list, ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group', 'total_count', 'bazaar_group'], batch_size=100)
     logger.info("update stock list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
@@ -176,7 +239,7 @@ def get_current_info(share):
         'main_stock_index_diff', '?', 'main_stock_volume', 'main_stock_value', 'main_stock_count', 'other_stock_status',
         'other_stock_volume', 'other_stock_value', 'other_stock_count', 'this_stock_status', 'this_stock_volume',
         'third_stock_value', 'third_stock_count']
-        part 2: ['buy_count', 'buy_volume', 'buy_order', 'sell_order', 'sell_order', 'sell_count']
+        part 2: ['buy_count', 'buy_volume', 'buy_order', 'sell_order', 'sell_volume', 'sell_count']
         part 3; ?
         part 4: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal',
         'buy_count_legal', '?', 'sell_count_personal', 'sell_count_legal']

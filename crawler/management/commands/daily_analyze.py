@@ -29,7 +29,7 @@ class Command(BaseCommand):
 
         row_list = []
         for share in Share.objects.all().order_by('ticker'):
-            if share.history_size > 0 and share.last_day_history['Date'] >= Share.get_today() - timedelta(1):
+            if share.history_size > 0 and share.last_day_history['Date'] >= Share.get_today() - timedelta(days=1):
                 results = dict()
                 for analyzer in self.daily_analyzers:
                     result = analyzer.analyze(share)

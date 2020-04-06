@@ -8,17 +8,37 @@ from django_pandas.managers import DataFrameManager
 
 
 class Share(models.Model):
+    class BazaarTypeChoices(models.IntegerChoices):
+        NAGHDI = 1
+        PURE = 2
+        MOSHTAGHE = 3
+        BASIC = 4
+        BoorseKala = 7
+
+    class BazaarChoices(models.IntegerChoices):
+        Boors = 1
+        FaraBoorse = 2
+
     DAY_OFFSET = 0
 
     def get_today():
         return date.today() - timedelta(days=Share.DAY_OFFSET)
 
     id = models.BigIntegerField(null=False, blank=False, primary_key=True)
-    ticker = models.CharField(unique=True, max_length=256)
+    ticker = models.CharField(null=False, blank=False, max_length=256)
     description = models.CharField(max_length=256)
+
+    enable = models.BooleanField(null=False, blank=False, default=True)
+    bazaar = models.IntegerField(null=True, blank=False, choices=BazaarChoices.choices)
+    bazaar_type = models.IntegerField(null=True, blank=False, choices=BazaarTypeChoices.choices)
+    bazaar_group = models.IntegerField(null=True, blank=False)
+    group = models.IntegerField(null=True, blank=False)
+    total_count = models.BigIntegerField(null=True, blank=False)
+    base_volume = models.BigIntegerField(null=True, blank=False)
 
     eps = models.IntegerField(null=True, blank=False)
     last_update = models.DateTimeField(null=True)
+
 
     @cached_property
     def is_rights_issue(self):
