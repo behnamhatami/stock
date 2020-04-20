@@ -9,7 +9,7 @@ class DailyCronJob(CronJobBase):
     code = 'crawler.daily_analyzer'  # a unique code
 
     def do(self):
-        management.call_command("update_stock_list")
-        management.call_command("update_stock_history")
+        management.call_command("update_share_list")
+        management.call_command("update_share_history")
         management.call_command("daily_analyze")
 

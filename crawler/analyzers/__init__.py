@@ -5,3 +5,4 @@ from crawler.analyzers.macd_cross import MACDCross
 from crawler.analyzers.new_comer_drop import NewComerDrop
 from crawler.analyzers.volume_analyzer import VolumeAnalyzer
 from crawler.analyzers.good_price_rights_issue import GoodPriceRightIssue
+from crawler.analyzers.option_analyzer import OptionAnalyzer

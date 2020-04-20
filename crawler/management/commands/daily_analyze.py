@@ -18,7 +18,7 @@ class Command(BaseCommand):
 
     def __init__(self, *args, **kwargs):
         # self.daily_analyzers = [VolumeAnalyzer(), BuyQueue(), CheapRightIssue(), GoodPriceRightIssue(), NewComerDrop(), MACDCross(), AirAnalyzer()]
-        self.daily_analyzers = [GoodPriceRightIssue()]
+        self.daily_analyzers = [OptionAnalyzer()]
         super().__init__(*args, **kwargs)
 
     def add_arguments(self, parser):
