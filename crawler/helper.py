@@ -45,6 +45,21 @@ def run_jobs(jobs, max_workers=100):
 
 
 @retry(tries=4, delay=1, backoff=2)
+def update_share_list_by_group(group):
+    params = (
+        ('g', group.id),
+        ('t', 'g'),
+        ('s', '0'),
+    )
+    response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params)
+
+    if response.status_code != 200:
+        raise Exception("Http Error: {}".format(response.status_code))
+
+    return response.text
+
+
+@retry(tries=4, delay=1, backoff=2)
 def update_share_groups():
     response = requests.get('http://www.tsetmc.com/Loader.aspx?ParTree=111C1213')
 
@@ -181,14 +196,14 @@ def update_share_list(batch_size=100):
 
     '''
         separated with @ text
-        part 0: ?
+        part 0: 
         part 1: general info of bazaar  ['date and time of last_transaction', 'boorse_status', 'boorse_index',
         'boorse_index_diff', 'boorse_market cap', 'boorse_volume', 'boorse_value', 'boorse_count', 'faraboorse_status',
         'faraboorse_volume', 'faraboorse_value', 'faraboorse_count', 'moshtaghe_status', 'moshtaghe_volume',
         'moshtaghe_value', 'moshtaghe_count']
         part 2: ['id', 'IR', 'ticker', 'description', '?', 'first', 'tomorrow', 'last', 'count', 'volume', 'value', 'low', 'high', 'yesterday', 'eps', 'base volume', '', 'bazaar type', 'group', 'max_price_possible', 'min_price_possible', 'number of share', 'bazaar group']
         part 3; ['id', 'order', 'sell_count', 'buy_count', 'buy_price', 'sell_price', 'buy_volume', 'sell_volume']
-        part 4: ?
+        part 4: last transaction id
     '''
     
     df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
@@ -223,7 +238,30 @@ def update_share_list(batch_size=100):
     logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
-def get_day_price(share):
+def get_current_transactions(share):
+    headers = HEADERS.copy()
+    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
+    headers['X-Requested-With'] = 'XMLHttpRequest'
+
+    params = (
+        ('i', share.id),
+    )
+
+    response = requests.get('http://cdn.tsetmc.com/tsev2/data/TradeDetail.aspx', headers=headers, params=params)
+
+    if response.status_code != 200:
+        raise Exception("Http Error: {}".format(response.status_code))
+
+    data = []
+    for row in BeautifulSoup(response.text, features='html.parser').select('row'):
+        data.append([row_data.contents[0].strip() for row_data in row.select('cell')])
+
+    df = pd.DataFrame(data, columns = ['order', 'time', 'volume', 'price'])
+    df.set_index('order')
+    return df
+ 
+
+def get_current_price(share):
     headers = HEADERS.copy()
     headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
     headers['X-Requested-With'] = 'XMLHttpRequest'
@@ -258,22 +296,18 @@ def get_current_info(share):
     if response.status_code != 200:
         return
 
-    print(response.text, end='\n\n')
-    print(response.text.split(";")[3])
     '''
         separated with ; text
         part 0: ['last_transaction_time', 'state', 'last', 'tomorrow', 'first', 'yesterday', 'max_range', 'min_range',
         'count', 'volume', 'value', '?', 'date', 'time']
-        part 1: general info of bazaar  ['date', 'last_transaction_time', 'main_share_status', 'main_share_index',
-        'main_share_index_diff', '?', 'main_share_volume', 'main_share_value', 'main_share_count', 'other_share_status',
-        'other_share_volume', 'other_share_value', 'other_share_count', 'this_share_status', 'this_share_volume',
-        'third_share_value', 'third_share_count']
+        part 1: empty
         part 2: ['buy_count', 'buy_volume', 'buy_order', 'sell_order', 'sell_volume', 'sell_count']
-        part 3; ?
-        part 4: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal',
+        part 3: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal',
         'buy_count_legal', '?', 'sell_count_personal', 'sell_count_legal']
         part 5: shares from same group ['last', 'tomorrow', 'yesterday', 'count', 'volume', 'value']
     '''
-#    df = pd.read_csv(StringIO(response.text.split("@")[0]), sep=',', lineterminator=';', header=None)
-#    df = df.where((pd.notnull(df)), None)
-#    print(df)
+    return response.text
+    print(response.text.split("@"))
+    df = pd.read_csv(StringIO(response.text.split("@")[0]), sep=',', lineterminator=';', header=None)
+    df = df.where((pd.notnull(df)), None)
+    print(df)
