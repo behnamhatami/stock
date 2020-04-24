@@ -1,14 +1,13 @@
-import asyncio
 import concurrent
 import logging
 from datetime import datetime, timezone
 from io import StringIO
-from persiantools import characters
 
 import pandas as pd
-from retry import retry
 import requests
 from bs4 import BeautifulSoup
+from persiantools import characters
+from retry import retry
 
 from crawler.models import Share, ShareDailyHistory, ShareGroup
 
@@ -26,10 +25,11 @@ HEADERS = {
     'Cache-Control': 'no-cache',
 }
 
+
 def run_jobs(jobs, max_workers=100):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(job) for job in jobs]
-        
+
         success, error = 0, 0
         for index, future in enumerate(concurrent.futures.as_completed(futures)):
             if future.exception():
@@ -38,8 +38,9 @@ def run_jobs(jobs, max_workers=100):
             else:
                 success += 1
             if index % 100 == 99:
-                logger.info("{}/{} out of {}({}%)".format(success, index+1, len(futures), round((index+1)/len(futures) * 100, 2)))
-            
+                logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
+                                                          round((index + 1) / len(futures) * 100, 2)))
+
         logger.info(
             "{} tasks completed out of {}".format(success, len(futures)))
 
@@ -77,11 +78,11 @@ def update_share_groups():
             group = ShareGroup.objects.get(id=id)
         except ShareGroup.DoesNotExist:
             group = ShareGroup()
-        
+
         group.id = int(id)
         group.name = characters.ar_to_fa(name)
         group.save()
-    
+
     logger.info("Share group info updated. number of groups: {}".format(ShareGroup.objects.count()))
 
 
@@ -109,7 +110,6 @@ def search_share(keyword):
     df = pd.read_csv(StringIO(response.text), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
 
-
     new_list, update_list = [], []
     for index, row in df.iterrows():
         id = row[2]
@@ -119,20 +119,20 @@ def search_share(keyword):
             share = Share()
 
         (update_list if share.id else new_list).append(share)
-            
+
         share.ticker = characters.ar_to_fa(str(row[0]))
         share.description = characters.ar_to_fa(row[1])
         share.id = row[2]
         share.bazaar_type = row[6]
-        share.enable = row[7]     
+        share.enable = row[7]
         if share.is_buy_option or share.is_sell_option:
             share.option_strike_price, share.option_strike_date, share.option_base_share = share.parse_description()
-        
 
     if new_list:
         logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=100)
-    Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price', 'option_strike_date', 'option_base_share'], batch_size=100)
+    Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
+                                            'option_strike_date', 'option_base_share'], batch_size=100)
     if new_list:
         logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
@@ -154,11 +154,10 @@ def update_share_history_item(share, days=None, batch_size=100):
     response = requests.get('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', headers=headers,
                             params=params)
 
-    if response.status_code != 200: 
+    if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
 
-
-    labels = ['date', 'high', 'low', 'tomorrow', 'close', 'first', 'yesterday', 'value', 'volume', 'count']
+    labels = ['date', 'high', 'low', 'tomorrow', 'close', 'open', 'yesterday', 'value', 'volume', 'count']
     df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
     df = df.where((pd.notnull(df)), None)
 
@@ -176,7 +175,7 @@ def update_share_history_item(share, days=None, batch_size=100):
     share.save()
     if share_histories:
         logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
-   
+
 
 @retry(tries=4, delay=1, backoff=2)
 def update_share_list(batch_size=100):
@@ -193,7 +192,6 @@ def update_share_list(batch_size=100):
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
 
-
     '''
         separated with @ text
         part 0: 
@@ -205,7 +203,7 @@ def update_share_list(batch_size=100):
         part 3; ['id', 'order', 'sell_count', 'buy_count', 'buy_price', 'sell_price', 'buy_volume', 'sell_volume']
         part 4: last transaction id
     '''
-    
+
     df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
 
@@ -217,7 +215,7 @@ def update_share_list(batch_size=100):
             share = Share()
 
         (update_list if share.id else new_list).append(share)
-        
+
         share.enable = True
         share.id = row[0]
         share.ticker = characters.ar_to_fa(str(row[2]))
@@ -230,11 +228,14 @@ def update_share_list(batch_size=100):
         share.bazaar_group = row[22]
         if share.is_buy_option or share.is_sell_option:
             share.option_strike_price, share.option_strike_date, share.option_base_share = share.parse_description()
-        
+
     if new_list:
         logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=100)
-    Share.objects.bulk_update(update_list, ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group', 'total_count', 'bazaar_group', 'option_strike_price', 'option_strike_date', 'option_base_share'], batch_size=100)
+    Share.objects.bulk_update(update_list,
+                              ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group',
+                               'total_count', 'bazaar_group', 'option_strike_price', 'option_strike_date',
+                               'option_base_share'], batch_size=100)
     logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
@@ -256,10 +257,10 @@ def get_current_transactions(share):
     for row in BeautifulSoup(response.text, features='html.parser').select('row'):
         data.append([row_data.contents[0].strip() for row_data in row.select('cell')])
 
-    df = pd.DataFrame(data, columns = ['order', 'time', 'volume', 'price'])
+    df = pd.DataFrame(data, columns=['order', 'time', 'volume', 'price'])
     df.set_index('order')
     return df
- 
+
 
 def get_current_price(share):
     headers = HEADERS.copy()

@@ -1,5 +1,5 @@
-from django_cron import CronJobBase, Schedule
 from django.core import management
+from django_cron import CronJobBase, Schedule
 
 
 class DailyCronJob(CronJobBase):
@@ -12,4 +12,3 @@ class DailyCronJob(CronJobBase):
         management.call_command("update_share_list")
         management.call_command("update_share_history")
         management.call_command("daily_analyze")
-

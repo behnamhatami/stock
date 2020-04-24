@@ -1,13 +1,12 @@
 import logging
 from datetime import date, timedelta
 
+import pandas as pd
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from crawler.analyzers import *
 from crawler.models import Share
-from django.conf import settings
-
-import pandas as pd
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -17,8 +16,10 @@ class Command(BaseCommand):
     requires_migrations_checks = True
 
     def __init__(self, *args, **kwargs):
-        # self.daily_analyzers = [VolumeAnalyzer(), BuyQueue(), CheapRightIssue(), GoodPriceRightIssue(), NewComerDrop(), MACDCross(), AirAnalyzer()]
-        self.daily_analyzers = [OptionAnalyzer()]
+        self.daily_analyzers = [AirAnalyzer(), BuyQueueAnalyzer(), CheapRightIssueAnalyzer(),
+                                GoodPriceRightIssueAnalyzer(), MACDCrossAnalyzer(), OptionAnalyzer(),
+                                NewComerDropAnalyzer(), VolumeAnalyzer()]
+
         super().__init__(*args, **kwargs)
 
     def add_arguments(self, parser):
@@ -29,7 +30,7 @@ class Command(BaseCommand):
 
         row_list = []
         for share in Share.objects.all().order_by('ticker'):
-            if share.history_size > 0 and share.last_day_history['Date'] >= Share.get_today() - timedelta(days=1):
+            if share.history_size > 0 and share.last_day_history['date'] >= Share.get_today() - timedelta(days=1):
                 results = dict()
                 for analyzer in self.daily_analyzers:
                     result = analyzer.analyze(share)
@@ -41,7 +42,6 @@ class Command(BaseCommand):
                         id=share.id, ticker=share.ticker)
                     row_list.append({"ticker": ticker_link, **results})
                     self.stdout.write("{}".format({share.ticker: results}))
-
 
         if row_list:
             df = pd.DataFrame(row_list)

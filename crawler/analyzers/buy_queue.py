@@ -2,7 +2,7 @@ from crawler.analytic import is_upper_buy_closed
 from crawler.analyzers.analyzer import Analyzer
 
 
-class BuyQueue(Analyzer):
+class BuyQueueAnalyzer(Analyzer):
     def __init__(self, threshold=2):
         self.threshold = threshold
 

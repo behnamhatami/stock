@@ -1,10 +1,8 @@
-import asyncio
 import logging
 
 from django.core.management.base import BaseCommand
 
 from crawler.helper import update_share_list, update_share_groups
-
 
 logging.basicConfig(level=logging.DEBUG)
 

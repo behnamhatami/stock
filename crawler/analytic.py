@@ -1,6 +1,6 @@
-import talib
+from stockstats import StockDataFrame
 
-from crawler.models import ShareDailyHistory, Share
+from crawler.models import Share
 
 try:
     import bulbea as bb
@@ -26,15 +26,15 @@ except:
 
 
 def is_upper_buy_closed(history):
-    return (history['Close'] > history['Yesterday'] * 1.048).all()
+    return (history['close'] > history['yesterday'] * 1.048).all()
+
 
 def is_upper_buy_all_day(history):
-    return (history['Low'] > history['Yesterday'] * 1.048).all()
+    return (history['low'] > history['yesterday'] * 1.048).all()
 
 
 def signal_on_extremum(ticker, neutral_tol=0.0, forecast_tol=0.0):
-    data = Share.objects.get(ticker=ticker).daily_history
-    data['macd'], data['signal'], data['hist'] = talib.MACD(data['close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    data = StockDataFrame.retype(Share.objects.get(ticker=ticker).daily_history)
 
     slope_21 = data["macd"].iat[-2] - data["macd"].iat[-3]
     slope_10 = (data["macd"].iat[-1] - data["macd"].iat[-2])

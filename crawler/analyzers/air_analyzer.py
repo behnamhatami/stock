@@ -11,20 +11,20 @@ class AirAnalyzer(Analyzer):
     def analyze(self, share):
         history = share.daily_history
 
-        if share.is_rights_issue or share.day_history(0)['Date'] >= Share.get_today() - timedelta(
+        if share.is_rights_issue or share.day_history(0)['date'] >= Share.get_today() - timedelta(
                 days=self.threshold):
             return
 
-        if history['High'].max() == share.last_day_history['High']:
-            return {"aired": {"price": share.last_day_history['High']}}
+        if history['high'].max() == share.last_day_history['high']:
+            return {"aired": {"price": share.last_day_history['high']}}
 
-        if history['Low'].min() == share.last_day_history['Low']:
-            return {"dumped": {"price": share.last_day_history['Low']}}
+        if history['low'].min() == share.last_day_history['low']:
+            return {"dumped": {"price": share.last_day_history['low']}}
 
-        if history[history['Date'] >= Share.get_today() - timedelta(days=30)]['Low'].min() == \
-                share.last_day_history['Low']:
-            return {"monthly lower bound": {"price": share.last_day_history['Low']}}
+        if history[history['date'] >= Share.get_today() - timedelta(days=30)]['low'].min() == \
+                share.last_day_history['low']:
+            return {"monthly lower bound": {"price": share.last_day_history['low']}}
 
-        if history[history['Date'] >= Share.get_today() - timedelta(days=180)]['Low'].min() == \
-                share.last_day_history['Low']:
-            return {"half year lower bound": {"price": share.last_day_history['Low']}}
+        if history[history['date'] >= Share.get_today() - timedelta(days=180)]['low'].min() == \
+                share.last_day_history['low']:
+            return {"half year lower bound": {"price": share.last_day_history['low']}}

@@ -1,6 +1,4 @@
-import asyncio
 import logging
-
 from functools import partial
 
 from django.core.management.base import BaseCommand
