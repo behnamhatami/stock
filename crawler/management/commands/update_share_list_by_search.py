@@ -16,7 +16,18 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         persian_char = ["آ", "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع",
                         "غ", "ف", "ق", "ل", "م", "ن", "ه", "و", "پ", "چ", "ژ", "ک", "گ", "ی"]
-        share_jobs = [partial(search_share, share.ticker) for share in Share.objects.all()]
-        char_jobs = [partial(search_share, x + y) for x in persian_char for y in persian_char]
-        run_jobs(share_jobs + char_jobs)
-        self.stdout.write("Share list updated.")
+        tickers = list(Share.objects.all().values_list('ticker', flat=True))
+        two_chars = [x + y for x in persian_char for y in persian_char]
+
+        three_chars = []
+        for name in two_chars:
+            if Share.objects.filter(ticker__contains=name).count() > 30:
+                for extra_char in persian_char:
+                    three_chars.append(name + extra_char)
+
+        self.stdout.write(
+            "searching for {} ticker name, {} two chars and {} three chars".format(len(tickers), len(two_chars),
+                                                                                   len(three_chars)))
+
+        run_jobs([partial(search_share, name) for name in tickers + two_chars + three_chars])
+        self.stdout.write("Share list updated. {} new added.".format(Share.objects.count() - len(tickers)))

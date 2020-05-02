@@ -37,7 +37,8 @@ def run_jobs(jobs, max_workers=100):
                 error += 1
             else:
                 success += 1
-            if index % 100 == 99:
+
+            if int((index + 1) * 100 / len(futures)) - int(index * 100 / len(futures)):
                 logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
                                                           round((index + 1) / len(futures) * 100, 2)))
 
@@ -52,7 +53,7 @@ def update_share_list_by_group(group):
         ('t', 'g'),
         ('s', '0'),
     )
-    response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params)
+    response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=5)
 
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
@@ -98,7 +99,8 @@ def search_share(keyword):
         'Referer': 'http://www.tsetmc.com/Loader.aspx?ParTree=15',
     }
 
-    response = requests.get('http://www.tsetmc.com/tsev2/data/search.aspx?skey={}'.format(keyword), headers=headers)
+    response = requests.get('http://www.tsetmc.com/tsev2/data/search.aspx?skey={}'.format(keyword), headers=headers,
+                            timeout=5)
 
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
@@ -124,7 +126,7 @@ def search_share(keyword):
         share.description = characters.ar_to_fa(row[1])
         share.id = row[2]
         share.bazaar_type = row[6]
-        share.enable = row[7]
+        share.enable = bool(row[7])
         if share.is_buy_option or share.is_sell_option:
             share.option_strike_price, share.option_strike_date, share.option_base_share = share.parse_description()
 
@@ -152,7 +154,7 @@ def update_share_history_item(share, days=None, batch_size=100):
     )
     share.last_update = datetime.now(timezone.utc)
     response = requests.get('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', headers=headers,
-                            params=params)
+                            params=params, timeout=10)
 
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
@@ -187,7 +189,8 @@ def update_share_list(batch_size=100):
         ('r', '0'),
     )
 
-    response = requests.get('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx', headers=headers, params=params)
+    response = requests.get('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx', headers=headers, params=params,
+                            timeout=5)
 
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
@@ -248,7 +251,8 @@ def get_current_transactions(share):
         ('i', share.id),
     )
 
-    response = requests.get('http://cdn.tsetmc.com/tsev2/data/TradeDetail.aspx', headers=headers, params=params)
+    response = requests.get('http://cdn.tsetmc.com/tsev2/data/TradeDetail.aspx', headers=headers, params=params,
+                            timeout=5)
 
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
@@ -271,7 +275,8 @@ def get_current_price(share):
         ('i', share.id),
     )
 
-    response = requests.get('http://www.tsetmc.com/tsev2/chart/data/IntraDayPrice.aspx', headers=headers, params=params)
+    response = requests.get('http://www.tsetmc.com/tsev2/chart/data/IntraDayPrice.aspx', headers=headers, params=params,
+                            timeout=5)
 
     if response.status_code != 200:
         return
@@ -292,7 +297,8 @@ def get_current_info(share):
         ('c', '27 '),
     )
 
-    response = requests.get('http://www.tsetmc.com/tsev2/data/instinfofast.aspx', headers=headers, params=params)
+    response = requests.get('http://www.tsetmc.com/tsev2/data/instinfofast.aspx', headers=headers, params=params,
+                            timeout=5)
 
     if response.status_code != 200:
         return
