@@ -1,7 +1,6 @@
 import logging
 from datetime import timedelta, date
 
-from django.db import models
 # Create your models here.
 from django.utils.functional import cached_property
 from django_pandas.managers import DataFrameManager
@@ -9,6 +8,46 @@ from persiantools.jdatetime import JalaliDate
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+from django.db import models
+from django.core.serializers.json import DjangoJSONEncoder
+import json
+
+
+class JSONField(models.TextField):
+    """
+    JSONField es un campo TextField que serializa/deserializa objetos JSON.
+    Django snippet #1478
+
+    Ejemplo:
+        class Page(models.Model):
+            data = JSONField(blank=True, null=True)
+
+        page = Page.objects.get(pk=5)
+        page.data = {'title': 'test', 'type': 3}
+        page.save()
+    """
+
+    def to_python(self, value):
+        if value == "":
+            return None
+
+        try:
+            if isinstance(value, str):
+                return json.loads(value)
+        except ValueError:
+            pass
+        return value
+
+    def from_db_value(self, value, *args):
+        return self.to_python(value)
+
+    def get_db_prep_save(self, value, *args, **kwargs):
+        if value == "":
+            return None
+        if isinstance(value, dict):
+            value = json.dumps(value, cls=DjangoJSONEncoder)
+        return value
 
 
 class ShareGroup(models.Model):
@@ -33,6 +72,7 @@ class Share(models.Model):
 
     DAY_OFFSET = 0
 
+    @staticmethod
     def get_today():
         return date.today() - timedelta(days=Share.DAY_OFFSET)
 
@@ -56,6 +96,17 @@ class Share(models.Model):
 
     eps = models.IntegerField(null=True, blank=False)
     last_update = models.DateTimeField(null=True)
+    extra_data = JSONField(null=True, blank=False)
+
+    def compute_value(self, count, price):
+        if self.group.id == 59:  # maskan
+            return count * price * ((1 - 0.0024) if count < 0 else (1 + 0.0049))
+        elif self.group.id in [68, 69]:  # etf or akhza
+            return count * price * ((1 - 0.000725) if count < 0 else (1 + 0.000725))
+        elif self.group.id == 68:
+            return count * price * ((1 - 0.000725) if count < 0 else (1 + 0.000725))
+        else:  # TODO: Boors and fara boors could be seprated
+            return count * price * ((1 - 0.00975) if count < 0 else (1 + 0.00454))
 
     def parse_description(self):
         parts = self.description.split('-')
@@ -73,7 +124,7 @@ class Share(models.Model):
             return int(parts[1]), JalaliDate(*date_parts).to_gregorian(), Share.objects.get(enable=True,
                                                                                             ticker=parts[0].strip()[8:])
         except Exception as e:
-            logger.exception(e)
+            logger.exception("parsing {} encounter error. ({})".format(self.ticker, self.description))
             return None, None, None
 
     @cached_property

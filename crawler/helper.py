@@ -1,11 +1,13 @@
 import concurrent
 import logging
-from datetime import datetime, timezone
+import time
+from datetime import datetime
 from io import StringIO
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from django.utils.timezone import get_current_timezone
 from persiantools import characters
 from retry import retry
 
@@ -14,18 +16,43 @@ from crawler.models import Share, ShareDailyHistory, ShareGroup
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:61.0) Gecko/20100101 Firefox/61.0',
-    'Accept': 'text/plain, */*; q=0.01',
-    'Accept-Language': 'en-GB,en;q=0.5',
-    'Origin': 'http://www.tsetmc.com',
-    'DNT': '1',
-    'Connection': 'keep-alive',
-    'Pragma': 'no-cache',
-    'Cache-Control': 'no-cache',
-}
+
+def get_headers(share, referer=None):
+    return {
+        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:61.0) Gecko/20100101 Firefox/61.0',
+        'Accept': 'text/plain, */*; q=0.01',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Origin': 'http://www.tsetmc.com',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
+        'Referer': referer if referer else 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id),
+        'X-Requested-With': 'XMLHttpRequest',
+    }
 
 
+def submit_request(url, params, headers, retry_on_empty_response=False, timeout=5):
+    response = requests.get(url, params=params, headers=headers, timeout=timeout)
+
+    if response.status_code != 200 or (retry_on_empty_response and len(response.text.strip()) == 0):
+        raise Exception("Http Error: {}, {}, {}".format(response.status_code, url.split("/")[-1], params))
+
+    return response
+
+
+def log_time(f):
+    def wrapper(*args, **kwargs):
+        t = time.time()
+        try:
+            return f(*args, **kwargs)
+        finally:
+            logger.info("{} runs in {}".format(f.__name__, time.time() - t))
+
+    return wrapper
+
+
+@log_time
 def run_jobs(jobs, max_workers=100):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(job) for job in jobs]
@@ -38,7 +65,7 @@ def run_jobs(jobs, max_workers=100):
             else:
                 success += 1
 
-            if int((index + 1) * 100 / len(futures)) - int(index * 100 / len(futures)):
+            if int((index + 1) * 10 / len(futures)) - int(index * 10 / len(futures)):
                 logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
                                                           round((index + 1) / len(futures) * 100, 2)))
 
@@ -46,7 +73,7 @@ def run_jobs(jobs, max_workers=100):
             "{} tasks completed out of {}".format(success, len(futures)))
 
 
-@retry(tries=4, delay=1, backoff=2)
+@retry(tries=4, delay=1, backoff=1.2)
 def update_share_list_by_group(group):
     params = (
         ('g', group.id),
@@ -61,7 +88,7 @@ def update_share_list_by_group(group):
     return response.text
 
 
-@retry(tries=4, delay=1, backoff=2)
+@retry(tries=4, delay=1, backoff=1.2)
 def update_share_groups():
     response = requests.get('http://www.tsetmc.com/Loader.aspx?ParTree=111C1213')
 
@@ -87,23 +114,10 @@ def update_share_groups():
     logger.info("Share group info updated. number of groups: {}".format(ShareGroup.objects.count()))
 
 
-@retry(tries=4, delay=1, backoff=2)
+@retry(tries=4, delay=1, backoff=1.2)
 def search_share(keyword):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'X-Requested-With': 'XMLHttpRequest',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Referer': 'http://www.tsetmc.com/Loader.aspx?ParTree=15',
-    }
-
-    response = requests.get('http://www.tsetmc.com/tsev2/data/search.aspx?skey={}'.format(keyword), headers=headers,
-                            timeout=5)
-
-    if response.status_code != 200:
-        raise Exception("Http Error: {}".format(response.status_code))
+    response = submit_request('http://www.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
+                              headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15'))
 
     if len(response.text) == 0:
         return
@@ -142,22 +156,17 @@ def search_share(keyword):
 @retry(tries=4, delay=1, backoff=2)
 def update_share_history_item(share, days=None, batch_size=100):
     if days is None:
-        days = (datetime.now(timezone.utc) - share.last_update).days + 1 if share.last_update else 999999
-
-    headers = HEADERS.copy()
-    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
+        days = (datetime.now(tz=get_current_timezone()) - share.last_update).days + 1 if share.last_update else 999999
 
     params = (
         ('i', share.id),
         ('Top', days),
         ('A', '0'),
     )
-    share.last_update = datetime.now(timezone.utc)
-    response = requests.get('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', headers=headers,
-                            params=params, timeout=10)
+    response = submit_request('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
+                              headers=get_headers(share), timeout=10)
 
-    if response.status_code != 200:
-        raise Exception("Http Error: {}".format(response.status_code))
+    share.last_update = datetime.now(tz=get_current_timezone())
 
     labels = ['date', 'high', 'low', 'tomorrow', 'close', 'open', 'yesterday', 'value', 'volume', 'count']
     df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
@@ -181,33 +190,9 @@ def update_share_history_item(share, days=None, batch_size=100):
 
 @retry(tries=4, delay=1, backoff=2)
 def update_share_list(batch_size=100):
-    headers = HEADERS.copy()
-    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'
+    text = get_watch_list()
 
-    params = (
-        ('h', '0'),
-        ('r', '0'),
-    )
-
-    response = requests.get('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx', headers=headers, params=params,
-                            timeout=5)
-
-    if response.status_code != 200:
-        raise Exception("Http Error: {}".format(response.status_code))
-
-    '''
-        separated with @ text
-        part 0: 
-        part 1: general info of bazaar  ['date and time of last_transaction', 'boorse_status', 'boorse_index',
-        'boorse_index_diff', 'boorse_market cap', 'boorse_volume', 'boorse_value', 'boorse_count', 'faraboorse_status',
-        'faraboorse_volume', 'faraboorse_value', 'faraboorse_count', 'moshtaghe_status', 'moshtaghe_volume',
-        'moshtaghe_value', 'moshtaghe_count']
-        part 2: ['id', 'IR', 'ticker', 'description', '?', 'first', 'tomorrow', 'last', 'count', 'volume', 'value', 'low', 'high', 'yesterday', 'eps', 'base volume', '', 'bazaar type', 'group', 'max_price_possible', 'min_price_possible', 'number of share', 'bazaar group']
-        part 3; ['id', 'order', 'sell_count', 'buy_count', 'buy_price', 'sell_price', 'buy_volume', 'sell_volume']
-        part 4: last transaction id
-    '''
-
-    df = pd.read_csv(StringIO(response.text.split("@")[2]), sep=',', lineterminator=';', header=None)
+    df = pd.read_csv(StringIO(text.split("@")[2]), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
 
     new_list, update_list = [], []
@@ -234,7 +219,7 @@ def update_share_list(batch_size=100):
 
     if new_list:
         logger.info("new shares: {}".format(new_list))
-    Share.objects.bulk_create(new_list, batch_size=100)
+    Share.objects.bulk_create(new_list, batch_size=batch_size)
     Share.objects.bulk_update(update_list,
                               ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group',
                                'total_count', 'bazaar_group', 'option_strike_price', 'option_strike_date',
@@ -242,79 +227,42 @@ def update_share_list(batch_size=100):
     logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
-def get_current_transactions(share):
-    headers = HEADERS.copy()
-    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
-    headers['X-Requested-With'] = 'XMLHttpRequest'
-
-    params = (
-        ('i', share.id),
-    )
-
-    response = requests.get('http://cdn.tsetmc.com/tsev2/data/TradeDetail.aspx', headers=headers, params=params,
-                            timeout=5)
-
-    if response.status_code != 200:
-        raise Exception("Http Error: {}".format(response.status_code))
-
-    data = []
-    for row in BeautifulSoup(response.text, features='html.parser').select('row'):
-        data.append([row_data.contents[0].strip() for row_data in row.select('cell')])
-
-    df = pd.DataFrame(data, columns=['order', 'time', 'volume', 'price'])
-    df.set_index('order')
-    return df
-
-
-def get_current_price(share):
-    headers = HEADERS.copy()
-    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
-    headers['X-Requested-With'] = 'XMLHttpRequest'
-
-    params = (
-        ('i', share.id),
-    )
-
-    response = requests.get('http://www.tsetmc.com/tsev2/chart/data/IntraDayPrice.aspx', headers=headers, params=params,
-                            timeout=5)
-
-    if response.status_code != 200:
-        return
-
-    labels = ['time', 'high', 'low', 'open', 'close', 'volume']
-    df = pd.read_csv(StringIO(response.text), sep=',', lineterminator=';', names=labels)
-    df = df.where((pd.notnull(df)), None)
-    print(df)
-
-
-def get_current_info(share):
-    headers = HEADERS.copy()
-    headers['Referer'] = 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id)
-    headers['X-Requested-With'] = 'XMLHttpRequest'
-
-    params = (
-        ('i', share.id),
-        ('c', '27 '),
-    )
-
-    response = requests.get('http://www.tsetmc.com/tsev2/data/instinfofast.aspx', headers=headers, params=params,
-                            timeout=5)
-
-    if response.status_code != 200:
-        return
+@retry(tries=4, delay=1, backoff=2)
+def get_watch_list():
+    response = submit_request('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
+                              headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'),
+                              params=(('h', '0'), ('r', '0')))
 
     '''
-        separated with ; text
-        part 0: ['last_transaction_time', 'state', 'last', 'tomorrow', 'first', 'yesterday', 'max_range', 'min_range',
-        'count', 'volume', 'value', '?', 'date', 'time']
-        part 1: empty
-        part 2: ['buy_count', 'buy_volume', 'buy_order', 'sell_order', 'sell_volume', 'sell_count']
-        part 3: ['buy_personal', 'buy_legal', '?', 'sell_personal', 'sell_legal', 'buy_count_personal',
-        'buy_count_legal', '?', 'sell_count_personal', 'sell_count_legal']
-        part 5: shares from same group ['last', 'tomorrow', 'yesterday', 'count', 'volume', 'value']
+        separated with @ text
+        part 0: 
+        part 1: general info of bazaar  ['date and time of last_transaction', 'boorse_status', 'boorse_index',
+        'boorse_index_diff', 'boorse_market cap', 'boorse_volume', 'boorse_value', 'boorse_count', 'faraboorse_status',
+        'faraboorse_volume', 'faraboorse_value', 'faraboorse_count', 'moshtaghe_status', 'moshtaghe_volume',
+        'moshtaghe_value', 'moshtaghe_count']
+        part 2: ['id', 'IR', 'ticker', 'description', '?', 'open', 'tomorrow', 'close', 'count', 'volume', 'value', 
+        'low', 'high', 'yesterday', 'eps', 'base volume', '', 'bazaar type', 'group', 'max_price_possible', 
+        'min_price_possible', 'number of share', 'bazaar group']
+        part 3; ['id', 'order', 'sell_count', 'buy_count', 'buy_price', 'sell_price', 'buy_volume', 'sell_volume']
+        part 4: last transaction id
     '''
+
     return response.text
-    print(response.text.split("@"))
-    df = pd.read_csv(StringIO(response.text.split("@")[0]), sep=',', lineterminator=';', header=None)
-    df = df.where((pd.notnull(df)), None)
-    print(df)
+
+
+def get_share_detailed_info(share):
+    response = requests.get('http://www.tsetmc.com/Loader.aspx', headers=get_headers(share),
+                            params=(('Partree', '15131M'), ('i', share.id),))
+
+    data = {}
+    for row in BeautifulSoup(response.text, features='html.parser').body.select('tr'):
+        key = row.select('td')[0].contents[0].strip()
+
+        value_contents = row.select('td')[1].contents
+        value = value_contents[0].strip() if value_contents else None
+
+        data[key] = value
+
+    share.extra_data = data
+    share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
+    share.save()
