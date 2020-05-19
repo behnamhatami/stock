@@ -147,24 +147,24 @@ class Share(models.Model):
     def raw_daily_history(self):
         df = self.history.filter(
             date__lt=Share.get_today()).all().order_by(
-            'date').to_dataframe(['date', 'open', 'high', 'low', 'close', 'volume', 'value', 'yesterday', 'tomorrow'])
+            'date').to_dataframe(['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
         return df
 
     @cached_property
     def daily_history(self):
         df = self.raw_daily_history.copy()
-        df['diff'] = df['tomorrow'] / df['yesterday'].shift(-1)
+        df['diff'] = df['close'] / df['open'].shift(-1)
         if df.shape[0] > 0:
             df.loc[df.shape[0] - 1, 'diff'] = 1
             assert (df.iloc[-1]['diff'] == 1)
 
             df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
-            df['close'] /= df['acc_diff']
-            df['open'] /= df['acc_diff']
+            df['last'] /= df['acc_diff']
+            df['first'] /= df['acc_diff']
             df['high'] /= df['acc_diff']
             df['low'] /= df['acc_diff']
-            df['tomorrow'] /= df['acc_diff']
-            df['yesterday'] /= df['acc_diff']
+            df['close'] /= df['acc_diff']
+            df['open'] /= df['acc_diff']
 
         return df
 
@@ -187,10 +187,10 @@ class ShareDailyHistory(models.Model):
     share = models.ForeignKey(Share, null=False, blank=False, on_delete=models.CASCADE, related_name="history")
     date = models.DateField(null=False, blank=False)
 
-    open = models.IntegerField(null=False, blank=False)
+    first = models.IntegerField(null=False, blank=False)
+    last = models.IntegerField(null=False, blank=False)
     close = models.IntegerField(null=False, blank=False)
-    tomorrow = models.IntegerField(null=False, blank=False)
-    yesterday = models.IntegerField(null=False, blank=False)
+    open = models.IntegerField(null=False, blank=False)
 
     high = models.IntegerField(null=False, blank=False)
     low = models.IntegerField(null=False, blank=False)

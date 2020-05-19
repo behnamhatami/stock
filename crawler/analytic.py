@@ -26,11 +26,11 @@ except:
 
 
 def is_upper_buy_closed(history):
-    return (history['close'] > history['yesterday'] * 1.048).all()
+    return (history['last'] > history['open'] * 1.048).all()
 
 
 def is_upper_buy_all_day(history):
-    return (history['low'] > history['yesterday'] * 1.048).all()
+    return (history['low'] > history['open'] * 1.048).all()
 
 
 def signal_on_extremum(ticker, neutral_tol=0.0, forecast_tol=0.0):

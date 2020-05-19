@@ -11,4 +11,4 @@ class NewComerDropAnalyzer(Analyzer):
             return
 
         if is_upper_buy_closed(share.daily_history[:-1]) and not is_upper_buy_all_day(share.daily_history[-1:]):
-            return {"new commer drop": {"price": share.last_day_history['tomorrow']}}
+            return {"new commer drop": {"price": share.last_day_history['close']}}

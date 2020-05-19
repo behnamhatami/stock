@@ -168,7 +168,7 @@ def update_share_history_item(share, days=None, batch_size=100):
 
     share.last_update = datetime.now(tz=get_current_timezone())
 
-    labels = ['date', 'high', 'low', 'tomorrow', 'close', 'open', 'yesterday', 'value', 'volume', 'count']
+    labels = ['date', 'high', 'low', 'close', 'last', 'first', 'open', 'value', 'volume', 'count']
     df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
     df = df.where((pd.notnull(df)), None)
 
@@ -240,8 +240,8 @@ def get_watch_list():
         'boorse_index_diff', 'boorse_market cap', 'boorse_volume', 'boorse_value', 'boorse_count', 'faraboorse_status',
         'faraboorse_volume', 'faraboorse_value', 'faraboorse_count', 'moshtaghe_status', 'moshtaghe_volume',
         'moshtaghe_value', 'moshtaghe_count']
-        part 2: ['id', 'IR', 'ticker', 'description', '?', 'open', 'tomorrow', 'close', 'count', 'volume', 'value', 
-        'low', 'high', 'yesterday', 'eps', 'base volume', '', 'bazaar type', 'group', 'max_price_possible', 
+        part 2: ['id', 'IR', 'ticker', 'description', '?', 'first', 'close', 'last', 'count', 'volume', 'value', 
+        'low', 'high', 'open', 'eps', 'base volume', '', 'bazaar type', 'group', 'max_price_possible', 
         'min_price_possible', 'number of share', 'bazaar group']
         part 3; ['id', 'order', 'sell_count', 'buy_count', 'buy_price', 'sell_price', 'buy_volume', 'sell_volume']
         part 4: last transaction id

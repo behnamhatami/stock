@@ -24,15 +24,15 @@ class OptionAnalyzer(Analyzer):
                     df = pd.merge(options[i + 1].daily_history, options[i - 1].daily_history, left_on='date',
                                   right_on='date', how='inner', suffixes=('_nxt', '_prv'))
                     df = pd.merge(options[i].daily_history, df, left_on='date', right_on='date', how='inner')
-                    df['arbitrage'] = df['tomorrow'] / (df['tomorrow_nxt'] + df['tomorrow_prv']) * 2
+                    df['arbitrage'] = df['close'] / (df['close_nxt'] + df['close_prv']) * 2
                     if df.shape[0] > 0:
                         print(options[i].ticker, options[i].option_strike_price)
-                        print(df[['date', 'arbitrage', 'value', 'tomorrow', 'tomorrow_nxt', 'tomorrow_prv']])
+                        print(df[['date', 'arbitrage', 'value', 'close', 'close_nxt', 'close_prv']])
 
                     cur_history = options[i].last_day_history
                     prv_history = options[i - 1].last_day_history
                     nxt_history = options[i + 1].last_day_history
                     if cur_history['date'] == nxt_history['date'] == prv_history['date']:
-                        arbitrage = cur_history['tomorrow'] / (prv_history['tomorrow'] + nxt_history['tomorrow']) * 2
+                        arbitrage = cur_history['close'] / (prv_history['close'] + nxt_history['close']) * 2
                         if abs(1 - arbitrage) > 0.1:
                             print(options[i].ticker, arbitrage)

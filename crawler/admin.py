@@ -13,7 +13,7 @@ class ShareAdmin(admin.ModelAdmin):
 
 @admin.register(ShareDailyHistory)
 class ShareDailyHistoryAdmin(admin.ModelAdmin):
-    list_display = ('share', 'date', 'tomorrow', 'volume', 'count', 'value')
+    list_display = ('share', 'date', 'close', 'volume', 'count', 'value')
     list_filter = ('date',)
     search_fields = ('share__ticker', 'share__description')
 
