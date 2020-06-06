@@ -8,6 +8,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from django.utils.timezone import get_current_timezone
+from fake_useragent import UserAgent
 from persiantools import characters
 from retry import retry
 
@@ -16,17 +17,16 @@ from crawler.models import Share, ShareDailyHistory, ShareGroup
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+user_agent = UserAgent()
+
 
 def get_headers(share, referer=None):
     return {
-        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:61.0) Gecko/20100101 Firefox/61.0',
-        'Accept': 'text/plain, */*; q=0.01',
+        'User-Agent': user_agent.random,
+        'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Origin': 'http://www.tsetmc.com',
         'DNT': '1',
         'Connection': 'keep-alive',
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache',
         'Referer': referer if referer else 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id),
         'X-Requested-With': 'XMLHttpRequest',
     }
@@ -73,6 +73,7 @@ def run_jobs(jobs, max_workers=100):
             "{} tasks completed out of {}".format(success, len(futures)))
 
 
+@log_time
 @retry(tries=4, delay=1, backoff=1.2)
 def update_share_list_by_group(group):
     params = (
@@ -88,6 +89,7 @@ def update_share_list_by_group(group):
     return response.text
 
 
+@log_time
 @retry(tries=4, delay=1, backoff=1.2)
 def update_share_groups():
     response = requests.get('http://www.tsetmc.com/Loader.aspx?ParTree=111C1213')
@@ -188,6 +190,7 @@ def update_share_history_item(share, days=None, batch_size=100):
         logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
 
 
+@log_time
 @retry(tries=4, delay=1, backoff=2)
 def update_share_list(batch_size=100):
     text = get_watch_list()
