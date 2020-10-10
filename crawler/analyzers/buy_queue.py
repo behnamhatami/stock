@@ -7,7 +7,7 @@ class BuyQueueAnalyzer(Analyzer):
         self.threshold = threshold
 
     def analyze(self, share):
-        if share.daily_history.shape[0] < self.threshold:
+        if share.history_size < self.threshold:
             return None
 
         if is_upper_buy_closed(share.daily_history[-self.threshold:]):
