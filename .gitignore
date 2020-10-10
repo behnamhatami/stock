@@ -108,3 +108,4 @@ venv.bak/
 .idea/
 stock.sql
 report.html
+/data/
