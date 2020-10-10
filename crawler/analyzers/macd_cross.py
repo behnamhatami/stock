@@ -17,7 +17,7 @@ class MACDCrossAnalyzer(Analyzer):
         if share.history_size < 2:
             return
 
-        daily_history = StockDataFrame.retype(share.daily_history)
+        daily_history = StockDataFrame.retype(share.daily_history.copy())
 
         if daily_history["macd"].iloc[-1] <= daily_history["macds"].iloc[-1] and daily_history["macd"].iloc[-2] > \
                 daily_history["macds"].iloc[-2]:
