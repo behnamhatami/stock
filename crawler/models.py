@@ -138,7 +138,7 @@ class Share(models.Model):
                 return None, None, None
 
         except Exception as e:
-            logger.exception(f"parsing {self.ticker} decription encounter error. ({self.__dict__})")
+            logger.exception(f"parsing {self.ticker} description encounter error. ({self.__dict__})")
             return None, None, None
 
     @cached_property
