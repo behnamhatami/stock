@@ -30,5 +30,5 @@ class Command(BaseCommand):
                                                                                    len(three_chars)))
 
         run_jobs([partial(search_share, name) for name in tickers + two_chars + three_chars])
-        run_jobs([partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data=None)])
+        run_jobs([partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)])
         self.stdout.write("Share list updated. {} new added.".format(Share.objects.count() - len(tickers)))

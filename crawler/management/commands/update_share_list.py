@@ -17,6 +17,6 @@ class Command(BaseCommand):
         update_share_groups()
         update_share_list()
 
-        run_jobs([partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data=None)])
+        run_jobs([partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)])
 
         self.stdout.write("Share list updated.")
