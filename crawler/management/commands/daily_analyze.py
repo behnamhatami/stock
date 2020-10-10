@@ -1,5 +1,5 @@
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pandas as pd
 from django.conf import settings
@@ -50,7 +50,7 @@ class Command(BaseCommand):
 
             from django.template import loader
             template = loader.get_template('daily_report.html')
-            html_out = template.render({'date': date.today() - timedelta(days=Share.DAY_OFFSET + 1),
+            html_out = template.render({'date': Share.get_today(),
                                         'daily_report_dataframe': df.to_html(escape=False)})
 
             with open(settings.BASE_DIR + "/report.html", 'w') as f:
