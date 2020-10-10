@@ -1,17 +1,16 @@
 import concurrent
 import logging
-import time
-from datetime import datetime
 from io import StringIO
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from django.utils.timezone import get_current_timezone
+from django.utils import timezone
 from fake_useragent import UserAgent
 from persiantools import characters
 from retry import retry
 
+from crawler.decorators import log_time
 from crawler.models import Share, ShareDailyHistory, ShareGroup
 
 logger = logging.getLogger(__name__)
@@ -41,19 +40,9 @@ def submit_request(url, params, headers, retry_on_empty_response=False, timeout=
     return response
 
 
-def log_time(f):
-    def wrapper(*args, **kwargs):
-        t = time.time()
-        try:
-            return f(*args, **kwargs)
-        finally:
-            logger.info("{} runs in {}".format(f.__name__, time.time() - t))
-
-    return wrapper
-
-
 @log_time
 def run_jobs(jobs, max_workers=100):
+    number_of_buckets = max(min(20, len(jobs) // 10), 2)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(job) for job in jobs]
 
@@ -65,7 +54,7 @@ def run_jobs(jobs, max_workers=100):
             else:
                 success += 1
 
-            if int((index + 1) * 10 / len(futures)) - int(index * 10 / len(futures)):
+            if int((index + 1) * number_of_buckets / len(futures)) - int(index * number_of_buckets / len(futures)):
                 logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
                                                           round((index + 1) / len(futures) * 100, 2)))
 
@@ -143,22 +132,21 @@ def search_share(keyword):
         share.id = row[2]
         share.bazaar_type = row[6]
         share.enable = bool(row[7])
-        if share.is_buy_option or share.is_sell_option:
-            share.option_strike_price, share.option_strike_date, share.option_base_share = share.parse_description()
+        share.strike_date, share.option_strike_price, share.option_base_share = share.parse_description()
 
     if new_list:
         logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=100)
     Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
-                                            'option_strike_date', 'option_base_share'], batch_size=100)
+                                            'strike_date', 'option_base_share'], batch_size=100)
     if new_list:
         logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
-@retry(tries=4, delay=1, backoff=2)
+@retry(tries=6, delay=1, backoff=2)
 def update_share_history_item(share, days=None, batch_size=100):
     if days is None:
-        days = (datetime.now(tz=get_current_timezone()) - share.last_update).days + 1 if share.last_update else 999999
+        days = (timezone.now() - share.last_update).days + 1 if share.last_update else 999999
 
     params = (
         ('i', share.id),
@@ -168,7 +156,7 @@ def update_share_history_item(share, days=None, batch_size=100):
     response = submit_request('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
                               headers=get_headers(share), timeout=10)
 
-    share.last_update = datetime.now(tz=get_current_timezone())
+    share.last_update = timezone.now()
 
     labels = ['date', 'high', 'low', 'close', 'last', 'first', 'open', 'value', 'volume', 'count']
     df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
@@ -217,15 +205,14 @@ def update_share_list(batch_size=100):
         share.group = ShareGroup.objects.get(id=row[18])
         share.total_count = row[21]
         share.bazaar_group = row[22]
-        if share.is_buy_option or share.is_sell_option:
-            share.option_strike_price, share.option_strike_date, share.option_base_share = share.parse_description()
+        share.strike_date, share.option_strike_price, share.option_base_share = share.parse_description()
 
     if new_list:
         logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=batch_size)
     Share.objects.bulk_update(update_list,
                               ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group',
-                               'total_count', 'bazaar_group', 'option_strike_price', 'option_strike_date',
+                               'total_count', 'bazaar_group', 'option_strike_price', 'strike_date',
                                'option_base_share'], batch_size=100)
     logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 

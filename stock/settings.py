@@ -22,7 +22,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = 'drj+sdadgou9mlu*7l+d9gb#k+-k9jf-ax30m0(k2ng5y*r&a6'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = []
 
@@ -51,8 +51,9 @@ MIDDLEWARE = [
 ]
 
 CRON_CLASSES = [
-    'crawler.crons.daily_cron.DailyCronJob',
+    'crawler.crons.daily_analyzer_cron.DailyAnalyzerCronJob',
 ]
+DJANGO_CRON_LOCK_BACKEND = "django_cron.backends.lock.file.FileLock"
 
 ROOT_URLCONF = 'stock.urls'
 
@@ -109,12 +110,57 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
+
+# logging
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'timestamp': {
+            'format': '{asctime} {levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': '/var/log/django.log',
+            'formatter': 'timestamp',
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+        'null': {
+            'class': 'logging.NullHandler',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['file', 'console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'stockstats': {
+            'handlers': ['null'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        }
+    },
+}
+
 # Internationalization
 # https://docs.djangoproject.com/en/3.0/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Tehran'
 
 USE_I18N = True
 

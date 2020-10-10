@@ -1,17 +1,17 @@
+import json
 import logging
+import re
 from datetime import timedelta, date
 
-# Create your models here.
+from django.core.serializers.json import DjangoJSONEncoder
+from django.db import models
 from django.utils.functional import cached_property
 from django_pandas.managers import DataFrameManager
-from persiantools.jdatetime import JalaliDate
+
+from crawler.time_helper import convert_date_string_to_date
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-from django.db import models
-from django.core.serializers.json import DjangoJSONEncoder
-import json
 
 
 class JSONField(models.TextField):
@@ -70,14 +70,20 @@ class Share(models.Model):
         Boors = 1
         FaraBoorse = 2
 
-    DAY_OFFSET = 0
+    DAY_OFFSET_DEFAULT = 1
+    DAY_OFFSET = DAY_OFFSET_DEFAULT
+    NORMALIZE_STRATEGY = "scaler"
+    HISTORY_CACHE = {}
+    CACHE_DATE = None
+
+    INFO = dict()
 
     @staticmethod
     def get_today():
         return date.today() - timedelta(days=Share.DAY_OFFSET)
 
     id = models.BigIntegerField(null=False, blank=False, primary_key=True)
-    ticker = models.CharField(null=False, blank=False, max_length=256)
+    ticker = models.CharField(null=False, blank=False, max_length=256, db_index=True)
     description = models.CharField(max_length=256)
 
     enable = models.BooleanField(null=False, blank=False, default=True)
@@ -89,42 +95,50 @@ class Share(models.Model):
     total_count = models.BigIntegerField(null=True, blank=False)
     base_volume = models.BigIntegerField(null=True, blank=False)
 
+    strike_date = models.DateField(null=True, blank=False, default=None)
     option_strike_price = models.BigIntegerField(null=True, blank=False, default=None)
-    option_strike_date = models.DateField(null=True, blank=False, default=None)
     option_base_share = models.ForeignKey("self", null=True, blank=False, default=None, on_delete=models.CASCADE,
                                           related_name="options")
 
     eps = models.IntegerField(null=True, blank=False)
     last_update = models.DateTimeField(null=True)
-    extra_data = JSONField(null=True, blank=False)
+    extra_data = models.JSONField(null=True, blank=False)
 
     def compute_value(self, count, price):
+        # logger.info(f'{self.group.id}, {count}, {price}')
         if self.group.id == 59:  # maskan
             return count * price * ((1 - 0.0024) if count < 0 else (1 + 0.0049))
         elif self.group.id in [68, 69]:  # etf or akhza
             return count * price * ((1 - 0.000725) if count < 0 else (1 + 0.000725))
-        elif self.group.id == 68:
-            return count * price * ((1 - 0.000725) if count < 0 else (1 + 0.000725))
-        else:  # TODO: Boors and fara boors could be seprated
-            return count * price * ((1 - 0.00975) if count < 0 else (1 + 0.00454))
+        elif self.group.id == 56 and self.ticker.startswith('سکه'):
+            return count * price * ((1 - 0.00125) if count < 0 else (1 + 0.00125))
+        else:  # TODO: Boors and fara boors could be separated
+            return count * price * ((1 - 0.0064125) if count < 0 else (1 + 0.0064125))
 
     def parse_description(self):
-        parts = self.description.split('-')
         try:
-            if len(parts) != 3:
-                logger.warning("{} description ignored as option".format(self.ticker))
+            if self.is_buy_option or self.is_sell_option:
+                parts = self.description.split('-')
+                if len(parts) != 3:
+                    logger.warning("{} description ignored as option".format(self.ticker))
+                    return None, None, None
+
+                dt = convert_date_string_to_date(parts[2])
+
+                ticker = parts[0].strip()[8:].strip()
+                dictionary = {
+                    'ملی مس': 'فملی'
+                }
+                ticker = dictionary.get(ticker, ticker)
+
+                return dt, int(parts[1]), Share.objects.get(enable=True, ticker=ticker)
+            elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
+                return convert_date_string_to_date(re.findall(r'\d+$', self.description)[0]), None, None
+            else:
                 return None, None, None
-            date_parts = list(map(int, parts[2].split('/')))
-            if 0 <= date_parts[0] <= 31 < date_parts[2]:
-                date_parts.reverse()
 
-            if date_parts[0] <= 100:
-                date_parts[0] += 1400 if date_parts[0] <= 50 else 1300
-
-            return int(parts[1]), JalaliDate(*date_parts).to_gregorian(), Share.objects.get(enable=True,
-                                                                                            ticker=parts[0].strip()[8:])
         except Exception as e:
-            logger.exception("parsing {} encounter error. ({})".format(self.ticker, self.description))
+            logger.exception(f"parsing {self.ticker} decription encounter error. ({self.__dict__})")
             return None, None, None
 
     @cached_property
@@ -140,42 +154,75 @@ class Share(models.Model):
         return self.ticker[0] == 'ط' and (self.bazaar_group == 312 or self.bazaar_group is None)
 
     @cached_property
+    def is_bond(self):
+        return self.group.id == 69
+
+    @cached_property
     def is_special(self):
         return self.is_rights_issue or self.is_buy_option or self.is_sell_option
 
-    @cached_property
+    @property
     def raw_daily_history(self):
-        df = self.history.filter(
-            date__lt=Share.get_today()).all().order_by(
-            'date').to_dataframe(['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
-        return df
+        return self.history.all().order_by('date').to_dataframe(
+            ['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
 
-    @cached_property
+    @property
     def daily_history(self):
+        if Share.CACHE_DATE != date.today():
+            Share.CACHE_DATE = date.today()
+            Share.HISTORY_CACHE.clear()
+            logger.info("history cache reset!!")
+
+        hash_key = (self, Share.get_today(), Share.NORMALIZE_STRATEGY)
+        if hash_key in Share.HISTORY_CACHE and Share.HISTORY_CACHE[hash_key]['time'] == self.last_update:
+            return Share.HISTORY_CACHE[hash_key]['value']
+
         df = self.raw_daily_history.copy()
-        df['diff'] = df['close'] / df['open'].shift(-1)
-        if df.shape[0] > 0:
-            df.loc[df.shape[0] - 1, 'diff'] = 1
-            assert (df.iloc[-1]['diff'] == 1)
+        df = df[df['date'] <= Share.get_today()]
+        if Share.NORMALIZE_STRATEGY == 'scaler':
+            df['diff'] = df['close'] / df['open'].shift(-1)
+            if df.shape[0] > 0:
+                df.loc[df.shape[0] - 1, 'diff'] = 1
+                assert (df.iloc[-1]['diff'] == 1)
 
-            df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
-            df['last'] /= df['acc_diff']
-            df['first'] /= df['acc_diff']
-            df['high'] /= df['acc_diff']
-            df['low'] /= df['acc_diff']
-            df['close'] /= df['acc_diff']
-            df['open'] /= df['acc_diff']
+                df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
+                df['last'] /= df['acc_diff']
+                df['first'] /= df['acc_diff']
+                df['high'] /= df['acc_diff']
+                df['low'] /= df['acc_diff']
+                df['close'] /= df['acc_diff']
+                df['open'] /= df['acc_diff']
+        else:
+            df['diff'] = df['close'] - df['open'].shift(-1)
+            if df.shape[0] > 0:
+                df.loc[df.shape[0] - 1, 'diff'] = 0
+                assert (df.iloc[-1]['diff'] == 0)
 
+                df['acc_diff'] = df['diff'][::-1].cumsum()[::-1]
+                df['last'] -= df['acc_diff']
+                df['first'] -= df['acc_diff']
+                df['high'] -= df['acc_diff']
+                df['low'] -= df['acc_diff']
+                df['close'] -= df['acc_diff']
+                df['open'] -= df['acc_diff']
+
+        Share.HISTORY_CACHE[hash_key] = {'value': df, 'time': self.last_update}
         return df
+
+    def get_first_date_of_history(self):
+        return self.day_history(0)['date'] if self.history_size > 0 else Share.get_today()
 
     def day_history(self, loc):
         return self.daily_history.iloc[loc]
 
-    @cached_property
+    def history_of_date(self, d):
+        return self.daily_history[self.daily_history['date'] <= d].iloc[-1]
+
+    @property
     def last_day_history(self):
         return self.day_history(-1)
 
-    @cached_property
+    @property
     def history_size(self):
         return self.daily_history.shape[0]
 
@@ -185,7 +232,7 @@ class Share(models.Model):
 
 class ShareDailyHistory(models.Model):
     share = models.ForeignKey(Share, null=False, blank=False, on_delete=models.CASCADE, related_name="history")
-    date = models.DateField(null=False, blank=False)
+    date = models.DateField(null=False, blank=False, db_index=True)
 
     first = models.IntegerField(null=False, blank=False)
     last = models.IntegerField(null=False, blank=False)
