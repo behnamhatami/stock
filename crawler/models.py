@@ -96,9 +96,9 @@ class Share(models.Model):
     base_volume = models.BigIntegerField(null=True, blank=False)
 
     strike_date = models.DateField(null=True, blank=False, default=None)
+    base_share = models.ForeignKey("self", null=True, blank=False, default=None, on_delete=models.CASCADE,
+                                   related_name="options")
     option_strike_price = models.BigIntegerField(null=True, blank=False, default=None)
-    option_base_share = models.ForeignKey("self", null=True, blank=False, default=None, on_delete=models.CASCADE,
-                                          related_name="options")
 
     eps = models.IntegerField(null=True, blank=False)
     last_update = models.DateTimeField(null=True)
@@ -106,16 +106,16 @@ class Share(models.Model):
 
     def compute_value(self, count, price):
         # logger.info(f'{self.group.id}, {count}, {price}')
-        if self.group.id == 59:  # maskan
+        if self.group_id == 59:  # maskan
             return count * price * ((1 - 0.0024) if count < 0 else (1 + 0.0049))
-        elif self.group.id in [68, 69]:  # etf or akhza
+        elif self.group_id in [68, 69]:  # etf or akhza
             return count * price * ((1 - 0.000725) if count < 0 else (1 + 0.000725))
-        elif self.group.id == 56 and self.ticker.startswith('سکه'):
+        elif self.group_id == 56 and self.ticker.startswith('سکه'):
             return count * price * ((1 - 0.00125) if count < 0 else (1 + 0.00125))
         else:  # TODO: Boors and fara boors could be separated
             return count * price * ((1 - 0.0064125) if count < 0 else (1 + 0.0064125))
 
-    def parse_description(self):
+    def parse_data(self):
         try:
             if self.is_buy_option or self.is_sell_option:
                 parts = self.description.split('-')
@@ -134,6 +134,21 @@ class Share(models.Model):
                 return dt, int(parts[1]), Share.objects.get(enable=True, ticker=ticker)
             elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
                 return convert_date_string_to_date(re.findall(r'\d+$', self.description)[0]), None, None
+            elif self.is_rights_issue:
+                if Share.objects.filter(enable=True, ticker=self.ticker[:-1]).exists():
+                    result = Share.objects.filter(enable=True, ticker=self.ticker[:-1])
+                else:
+                    result = Share.objects.filter(ticker=self.ticker[:-1])
+
+                result = sorted(result,
+                                key=lambda share: share.last_day_history['date'] if share.history_size else date(1970,
+                                                                                                                 1, 1))
+
+                if result:
+                    return None, None, result[-1]
+                else:
+                    logger.warning(f"{self.ticker} does not match any base share")
+                    return None, None, None
             else:
                 return None, None, None
 
@@ -155,7 +170,7 @@ class Share(models.Model):
 
     @cached_property
     def is_bond(self):
-        return self.group.id == 69
+        return self.group_id == 69
 
     @cached_property
     def is_special(self):

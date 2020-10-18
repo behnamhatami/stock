@@ -127,18 +127,18 @@ def search_share(keyword):
 
         (update_list if share.id else new_list).append(share)
 
-        share.ticker = characters.ar_to_fa(str(row[0]))
-        share.description = characters.ar_to_fa(row[1])
+        share.ticker = characters.ar_to_fa(str(row[0])).strip()
+        share.description = characters.ar_to_fa(row[1]).strip()
         share.id = row[2]
         share.bazaar_type = row[6]
         share.enable = bool(row[7])
-        share.strike_date, share.option_strike_price, share.option_base_share = share.parse_description()
+        share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
 
     if new_list:
         logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=100)
     Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
-                                            'strike_date', 'option_base_share'], batch_size=100)
+                                            'strike_date', 'base_share'], batch_size=100)
     if new_list:
         logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
@@ -197,23 +197,23 @@ def update_share_list(batch_size=100):
 
         share.enable = True
         share.id = row[0]
-        share.ticker = characters.ar_to_fa(str(row[2]))
-        share.description = characters.ar_to_fa(row[3])
+        share.ticker = characters.ar_to_fa(str(row[2])).strip()
+        share.description = characters.ar_to_fa(row[3]).strip()
         share.eps = row[14]
         share.base_volume = row[15]
         share.bazaar_type = row[17]
         share.group = ShareGroup.objects.get(id=row[18])
         share.total_count = row[21]
         share.bazaar_group = row[22]
-        share.strike_date, share.option_strike_price, share.option_base_share = share.parse_description()
+        share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
 
     if new_list:
         logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=batch_size)
     Share.objects.bulk_update(update_list,
                               ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group',
-                               'total_count', 'bazaar_group', 'option_strike_price', 'strike_date',
-                               'option_base_share'], batch_size=100)
+                               'total_count', 'bazaar_group', 'option_strike_price', 'strike_date', 'base_share'],
+                              batch_size=100)
     logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
