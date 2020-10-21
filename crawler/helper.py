@@ -49,16 +49,17 @@ def run_jobs(jobs, max_workers=100, log=True, log_exception_on_failure=True):
         success, error = 0, 0
         for index, future in enumerate(concurrent.futures.as_completed(futures)):
             if future.exception():
-                if log_exception_on_failure:
-                    logger.exception(future.exception())
-                else:
-                    logger.warning(future.exception())
+                if log:
+                    if log_exception_on_failure:
+                        logger.exception(future.exception())
+                    else:
+                        logger.warning(future.exception())
                 error += 1
             else:
                 success += 1
 
-            if int((index + 1) * number_of_buckets / len(futures)) - int(index * number_of_buckets / len(futures)):
-                if log:
+            if log:
+                if int((index + 1) * number_of_buckets / len(futures)) - int(index * number_of_buckets / len(futures)):
                     logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
                                                               round((index + 1) / len(futures) * 100, 2)))
 
@@ -74,7 +75,7 @@ def update_share_list_by_group(group):
         ('t', 'g'),
         ('s', '0'),
     )
-    response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=5)
+    response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=10)
 
     if response.status_code != 200:
         raise Exception("Http Error: {}".format(response.status_code))
@@ -112,7 +113,7 @@ def update_share_groups():
 @retry(tries=4, delay=1, backoff=1.2)
 def search_share(keyword):
     response = submit_request('http://www.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
-                              headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15'))
+                              headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15'), timeout=25)
 
     if len(response.text) == 0:
         return
@@ -147,7 +148,7 @@ def search_share(keyword):
         logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
 
 
-@retry(tries=6, delay=1, backoff=2)
+@retry(tries=6, delay=1, backoff=2, logger=None)
 def update_share_history_item(share, days=None, batch_size=100):
     if days is None:
         days = (timezone.now() - share.last_update).days + 1 if share.last_update else 999999
@@ -158,7 +159,7 @@ def update_share_history_item(share, days=None, batch_size=100):
         ('A', '0'),
     )
     response = submit_request('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
-                              headers=get_headers(share), timeout=10)
+                              headers=get_headers(share), timeout=25)
 
     share.last_update = timezone.now()
 
@@ -225,7 +226,7 @@ def update_share_list(batch_size=100):
 def get_watch_list():
     response = submit_request('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
                               headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'),
-                              params=(('h', '0'), ('r', '0')))
+                              params=(('h', '0'), ('r', '0')), timeout=10)
 
     '''
         separated with @ text
@@ -246,7 +247,7 @@ def get_watch_list():
 
 def get_share_detailed_info(share):
     response = requests.get('http://www.tsetmc.com/Loader.aspx', headers=get_headers(share),
-                            params=(('Partree', '15131M'), ('i', share.id),))
+                            params=(('Partree', '15131M'), ('i', share.id),), timeout=10)
 
     data = {}
     for row in BeautifulSoup(response.text, features='html.parser').body.select('tr'):

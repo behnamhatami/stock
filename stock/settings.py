@@ -24,7 +24,7 @@ SECRET_KEY = 'drj+sdadgou9mlu*7l+d9gb#k+-k9jf-ax30m0(k2ng5y*r&a6'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["127.0.0.1", ]
 
 # Application definition
 
@@ -51,7 +51,10 @@ MIDDLEWARE = [
 ]
 
 CRON_CLASSES = [
-    'crawler.crons.daily_analyzer_cron.DailyAnalyzerCronJob',
+    'crawler.crons.update_share_history_cron_job.UpdateShareHistoryCronJob',
+    'crawler.crons.update_share_list_by_search_cron_job.UpdateShareListBySearchCronJob',
+    'crawler.crons.update_share_list_cron_job.UpdateShareListCronJob',
+    'crawler.crons.daily_analyzer_cron_job.DailyAnalyzerCronJob',
 ]
 DJANGO_CRON_LOCK_BACKEND = "django_cron.backends.lock.file.FileLock"
 
