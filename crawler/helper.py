@@ -110,7 +110,7 @@ def update_share_groups():
     logger.info("Share group info updated. number of groups: {}".format(ShareGroup.objects.count()))
 
 
-@retry(tries=4, delay=1, backoff=1.2)
+@retry(tries=4, delay=1, backoff=1.2, logger=None)
 def search_share(keyword):
     response = submit_request('http://www.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
                               headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15'), timeout=25)
