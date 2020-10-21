@@ -35,7 +35,7 @@ def submit_request(url, params, headers, retry_on_empty_response=False, timeout=
     response = requests.get(url, params=params, headers=headers, timeout=timeout)
 
     if response.status_code != 200 or (retry_on_empty_response and len(response.text.strip()) == 0):
-        raise Exception(f"Http Error: {response.status_code}, {url.split(" / ")[-1]}, {params}")
+        raise Exception(f"Http Error: {response.status_code}, {url.split('/')[-1]}, {params}")
 
     return response
 
