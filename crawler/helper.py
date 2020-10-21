@@ -41,7 +41,7 @@ def submit_request(url, params, headers, retry_on_empty_response=False, timeout=
 
 
 @log_time
-def run_jobs(jobs, max_workers=100):
+def run_jobs(jobs, max_workers=100, log=True, log_exception_on_failure=True):
     number_of_buckets = max(min(20, len(jobs) // 10), 2)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(job) for job in jobs]
@@ -49,14 +49,18 @@ def run_jobs(jobs, max_workers=100):
         success, error = 0, 0
         for index, future in enumerate(concurrent.futures.as_completed(futures)):
             if future.exception():
-                logger.exception(future.exception())
+                if log_exception_on_failure:
+                    logger.exception(future.exception())
+                else:
+                    logger.warning(future.exception())
                 error += 1
             else:
                 success += 1
 
             if int((index + 1) * number_of_buckets / len(futures)) - int(index * number_of_buckets / len(futures)):
-                logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
-                                                          round((index + 1) / len(futures) * 100, 2)))
+                if log:
+                    logger.info("{}/{} out of {}({}%)".format(success, index + 1, len(futures),
+                                                              round((index + 1) / len(futures) * 100, 2)))
 
         logger.info(
             "{} tasks completed out of {}".format(success, len(futures)))

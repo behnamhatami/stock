@@ -16,5 +16,5 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         history_count = ShareDailyHistory.objects.count()
         jobs = [partial(update_share_history_item, share) for share in Share.objects.all()]
-        run_jobs(jobs)
+        run_jobs(jobs, log=True, log_exception_on_failure=False)
         self.stdout.write("Share history updated. {} added.".format(ShareDailyHistory.objects.count() - history_count))
