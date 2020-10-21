@@ -3,7 +3,7 @@ from functools import partial
 
 from django.core.management.base import BaseCommand
 
-from crawler.helper import run_jobs, search_share, get_share_detailed_info
+from crawler.helper import search_share, get_share_detailed_info, run_jobs
 from crawler.models import Share
 
 logging.basicConfig(level=logging.DEBUG)
@@ -29,8 +29,8 @@ class Command(BaseCommand):
             "searching for {} ticker name, {} two chars and {} three chars".format(len(tickers), len(two_chars),
                                                                                    len(three_chars)))
 
-        run_jobs([partial(search_share, name) for name in tickers + two_chars + three_chars],
-                 log=True, log_exception_on_failure=False)
-        run_jobs([partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)],
-                 log=True, log_exception_on_failure=False)
+        jobs = [partial(search_share, name) for name in tickers + two_chars + three_chars]
+        run_jobs("Update Share List by Search", jobs, log=True, log_exception_on_failure=False)
+        jobs = [partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)]
+        run_jobs("Update Share Detail Info", jobs, log=True, log_exception_on_failure=False)
         self.stdout.write("Share list updated. {} new added.".format(Share.objects.count() - len(tickers)))
