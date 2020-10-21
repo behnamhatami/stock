@@ -120,7 +120,7 @@ class Share(models.Model):
             if self.is_buy_option or self.is_sell_option:
                 parts = self.description.split('-')
                 if len(parts) != 3:
-                    logger.warning("{} description ignored as option".format(self.ticker))
+                    logger.warning(f"{self.ticker} description ignored as option")
                     return None, None, None
 
                 dt = convert_date_string_to_date(parts[2])
@@ -267,4 +267,4 @@ class ShareDailyHistory(models.Model):
         unique_together = (("share", "date"),)
 
     def __str__(self):
-        return "{}: {}".format(self.share, self.date)
+        return f"{self.share}: {self.date}"

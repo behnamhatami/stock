@@ -26,7 +26,7 @@ def get_headers(share, referer=None):
         'Accept-Language': 'en-US,en;q=0.5',
         'DNT': '1',
         'Connection': 'keep-alive',
-        'Referer': referer if referer else 'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={}'.format(share.id),
+        'Referer': referer if referer else f'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}',
         'X-Requested-With': 'XMLHttpRequest',
     }
 
@@ -35,7 +35,7 @@ def submit_request(url, params, headers, retry_on_empty_response=False, timeout=
     response = requests.get(url, params=params, headers=headers, timeout=timeout)
 
     if response.status_code != 200 or (retry_on_empty_response and len(response.text.strip()) == 0):
-        raise Exception("Http Error: {}, {}, {}".format(response.status_code, url.split("/")[-1], params))
+        raise Exception(f"Http Error: {response.status_code}, {url.split(" / ")[-1]}, {params}")
 
     return response
 
@@ -77,7 +77,7 @@ def update_share_list_by_group(group):
     response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=10)
 
     if response.status_code != 200:
-        raise Exception("Http Error: {}".format(response.status_code))
+        raise Exception(f"Http Error: {response.status_code}")
 
     return response.text
 
@@ -88,7 +88,7 @@ def update_share_groups():
     response = requests.get('http://www.tsetmc.com/Loader.aspx?ParTree=111C1213')
 
     if response.status_code != 200:
-        raise Exception("Http Error: {}".format(response.status_code))
+        raise Exception(f"Http Error: {response.status_code}")
 
     for group_data in BeautifulSoup(response.text, features='html.parser').body.select('tr[id]'):
         id = group_data.select('td')[0].contents[0].strip()
@@ -106,7 +106,7 @@ def update_share_groups():
         group.name = characters.ar_to_fa(name)
         group.save()
 
-    logger.info("Share group info updated. number of groups: {}".format(ShareGroup.objects.count()))
+    logger.info(f"Share group info updated. number of groups: {ShareGroup.objects.count()}")
 
 
 @retry(tries=4, delay=1, backoff=1.2, logger=None)
@@ -138,13 +138,11 @@ def search_share(keyword):
         share.enable = bool(row[7])
         share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
 
-    if new_list:
-        logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=100)
     Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
                                             'strike_date', 'base_share'], batch_size=100)
     if new_list:
-        logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
+        logger.info(f"update share list, {len(new_list)} added ({new_list}), {len(update_list)} updated.")
 
 
 @retry(tries=6, delay=1, backoff=2, logger=None)
@@ -179,7 +177,7 @@ def update_share_history_item(share, days=None, batch_size=100):
 
     share.save()
     if share_histories:
-        logger.info("history of {} in {} days added.".format(share.ticker, len(share_histories)))
+        logger.info(f"history of {share.ticker} in {len(share_histories)} days added.")
 
 
 @log_time
@@ -211,14 +209,12 @@ def update_share_list(batch_size=100):
         share.bazaar_group = row[22]
         share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
 
-    if new_list:
-        logger.info("new shares: {}".format(new_list))
     Share.objects.bulk_create(new_list, batch_size=batch_size)
     Share.objects.bulk_update(update_list,
                               ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group',
                                'total_count', 'bazaar_group', 'option_strike_price', 'strike_date', 'base_share'],
                               batch_size=100)
-    logger.info("update share list, {} added, {} updated.".format(len(new_list), len(update_list)))
+    logger.info(f"update share list, {len(new_list)} ({new_list}) added, {len(update_list)} updated.")
 
 
 @retry(tries=4, delay=1, backoff=2)

@@ -38,10 +38,9 @@ class Command(BaseCommand):
                         results.update({key: str(value) for key, value in result.items()})
 
                 if results:
-                    ticker_link = '<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={id}">{ticker}</a>'.format(
-                        id=share.id, ticker=share.ticker)
+                    ticker_link = f'<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}">{share.ticker}</a>'
                     row_list.append({"ticker": ticker_link, **results})
-                    self.stdout.write("{}".format({share.ticker: results}))
+                    self.stdout.write(f"{share.ticker: results}")
 
         if row_list:
             df = pd.DataFrame(row_list)

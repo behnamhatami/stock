@@ -11,6 +11,6 @@ def log_time(f):
         try:
             return f(*args, **kwargs)
         finally:
-            logger.info("{} runs in {}".format(f.__name__, time.time() - t))
+            logger.info(f"{f.__name__} runs in {time.time() - t}")
 
     return wrapper
