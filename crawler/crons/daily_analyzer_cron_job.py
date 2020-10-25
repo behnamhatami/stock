@@ -1,5 +1,9 @@
+import logging
+
 from django.core import management
 from django_cron import CronJobBase, Schedule
+
+logger = logging.getLogger(__name__)
 
 
 class DailyAnalyzerCronJob(CronJobBase):
@@ -10,4 +14,8 @@ class DailyAnalyzerCronJob(CronJobBase):
     code = 'crawler.daily_analyzer_cron_job'  # a unique code
 
     def do(self):
-        management.call_command("daily_analyze", days=1)
+        try:
+            management.call_command("daily_analyze", days=1)
+        except Exception as e:
+            logger.exception(e)
+            raise

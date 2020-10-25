@@ -55,8 +55,10 @@ CRON_CLASSES = [
     'crawler.crons.update_share_list_by_search_cron_job.UpdateShareListBySearchCronJob',
     'crawler.crons.update_share_list_cron_job.UpdateShareListCronJob',
     'crawler.crons.daily_analyzer_cron_job.DailyAnalyzerCronJob',
+    'django_cron.cron.FailedRunsNotificationCronJob',
 ]
 DJANGO_CRON_LOCK_BACKEND = "django_cron.backends.lock.file.FileLock"
+DJANGO_CRON_DELETE_LOGS_OLDER_THAN = 10
 
 ROOT_URLCONF = 'stock.urls'
 

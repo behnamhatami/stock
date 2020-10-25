@@ -1,5 +1,9 @@
+import logging
+
 from django.core import management
 from django_cron import CronJobBase, Schedule
+
+logger = logging.getLogger(__name__)
 
 
 class UpdateShareListCronJob(CronJobBase):
@@ -10,4 +14,8 @@ class UpdateShareListCronJob(CronJobBase):
     code = 'crawler.daily_update_share_list_cron_job'  # a unique code
 
     def do(self):
-        management.call_command("update_share_list")
+        try:
+            management.call_command("update_share_list")
+        except Exception as e:
+            logger.exception(e)
+            raise
