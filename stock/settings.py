@@ -59,6 +59,7 @@ CRON_CLASSES = [
 ]
 DJANGO_CRON_LOCK_BACKEND = "django_cron.backends.lock.file.FileLock"
 DJANGO_CRON_DELETE_LOGS_OLDER_THAN = 10
+ALLOW_PARALLEL_RUNS = True
 
 ROOT_URLCONF = 'stock.urls'
 
@@ -117,8 +118,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'cache_table',
     }
 }
 
