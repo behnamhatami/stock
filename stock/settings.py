@@ -142,7 +142,7 @@ LOGGING = {
         },
         'console': {
             'class': 'logging.StreamHandler',
-            'level': 'DEBUG',
+            'level': 'INFO',
         },
         'null': {
             'class': 'logging.NullHandler',
@@ -151,12 +151,12 @@ LOGGING = {
     'loggers': {
         '': {
             'handlers': ['file', 'console'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG'),
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'stockstats': {
             'handlers': ['null'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG'),
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         }
     },
