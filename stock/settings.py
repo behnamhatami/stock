@@ -138,7 +138,7 @@ LOGGING = {
             'class': 'logging.FileHandler',
             'filename': '/var/log/django.log',
             'formatter': 'timestamp',
-            'level': 'DEBUG',
+            'level': 'INFO',
         },
         'console': {
             'class': 'logging.StreamHandler',
