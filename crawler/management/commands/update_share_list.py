@@ -6,8 +6,6 @@ from django.core.management.base import BaseCommand
 from crawler.helper import update_share_list, update_share_groups, get_share_detailed_info, run_jobs
 from crawler.models import Share
 
-logging.basicConfig(level=logging.DEBUG)
-
 
 class Command(BaseCommand):
     help = 'Update share list'

@@ -8,7 +8,7 @@ from django.core.management.base import BaseCommand
 from crawler.analyzers import *
 from crawler.models import Share
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -40,7 +40,7 @@ class Command(BaseCommand):
                 if results:
                     ticker_link = f'<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}">{share.ticker}</a>'
                     row_list.append({"ticker": ticker_link, **results})
-                    self.stdout.write(f"{share.ticker}: {results}")
+                    logger.info(f"{share.ticker}: {results}")
 
         if row_list:
             df = pd.DataFrame(row_list)

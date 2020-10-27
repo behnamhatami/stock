@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from crawler.helper import run_jobs, update_share_history_item
 from crawler.models import Share, ShareDailyHistory
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -17,4 +17,4 @@ class Command(BaseCommand):
         history_count = ShareDailyHistory.objects.count()
         jobs = [partial(update_share_history_item, share) for share in Share.objects.all()]
         run_jobs("Update Share History", jobs, log=True, log_exception_on_failure=False)
-        self.stdout.write(f"Share history updated. {ShareDailyHistory.objects.count() - history_count} added.")
+        logger.info(f"Share history updated. {ShareDailyHistory.objects.count() - history_count} added.")

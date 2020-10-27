@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from crawler.helper import search_share, get_share_detailed_info, run_jobs
 from crawler.models import Share
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -25,11 +25,11 @@ class Command(BaseCommand):
                 for extra_char in persian_char:
                     three_chars.append(name + extra_char)
 
-        self.stdout.write(
+        logger.info(
             f"searching for {len(tickers)} ticker name, {len(two_chars)} two chars and {len(three_chars)} three chars")
 
         jobs = [partial(search_share, name) for name in tickers + two_chars + three_chars]
         run_jobs("Update Share List by Search", jobs, log=True, log_exception_on_failure=False)
         jobs = [partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)]
         run_jobs("Update Share Detail Info", jobs, log=True, log_exception_on_failure=False)
-        self.stdout.write(f"Share list updated. {Share.objects.count() - len(tickers)} new added.")
+        logger.info(f"Share list updated. {Share.objects.count() - len(tickers)} new added.")
