@@ -2,7 +2,6 @@ import logging
 import time
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 def log_time(f):

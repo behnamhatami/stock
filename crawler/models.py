@@ -11,7 +11,6 @@ from django_pandas.managers import DataFrameManager
 from crawler.time_helper import convert_date_string_to_date
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 class JSONField(models.TextField):

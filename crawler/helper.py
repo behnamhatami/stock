@@ -14,8 +14,6 @@ from crawler.decorators import log_time
 from crawler.models import Share, ShareDailyHistory, ShareGroup
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
 user_agent = UserAgent()
 
 

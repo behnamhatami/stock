@@ -6,7 +6,6 @@ from crawler.analyzers.analyzer import Analyzer
 from crawler.models import Share
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 class OptionAnalyzer(Analyzer):
@@ -34,4 +33,3 @@ class OptionAnalyzer(Analyzer):
                     if df.shape[0] > 0 and abs(1 - df.iloc[-1]['arbitrage']) > 0.1 and df.iloc[-1][
                         'date'] == Share.get_today():
                         logger.info(f'{options[i].ticker}, {df[["date", "arbitrage"]]}')
-

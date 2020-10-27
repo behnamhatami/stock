@@ -138,9 +138,11 @@ LOGGING = {
             'class': 'logging.FileHandler',
             'filename': '/var/log/django.log',
             'formatter': 'timestamp',
+            'level': 'DEBUG',
         },
         'console': {
             'class': 'logging.StreamHandler',
+            'level': 'DEBUG',
         },
         'null': {
             'class': 'logging.NullHandler',
@@ -149,12 +151,12 @@ LOGGING = {
     'loggers': {
         '': {
             'handlers': ['file', 'console'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG'),
             'propagate': False,
         },
         'stockstats': {
             'handlers': ['null'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG'),
             'propagate': False,
         }
     },
