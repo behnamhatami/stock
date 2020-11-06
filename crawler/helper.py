@@ -32,8 +32,11 @@ def get_headers(share, referer=None):
 def submit_request(url, params, headers, retry_on_empty_response=False, timeout=5):
     response = requests.get(url, params=params, headers=headers, timeout=timeout)
 
-    if response.status_code != 200 or (retry_on_empty_response and len(response.text.strip()) == 0):
+    if response.status_code != 200:
         raise Exception(f"Http Error: {response.status_code}, {url.split('/')[-1]}, {params}")
+
+    if retry_on_empty_response and len(response.text.strip()) == 0:
+        raise Exception(f"Http Error: empty response, {url.split('/')[-1]}, {params}")
 
     return response
 
@@ -179,7 +182,6 @@ def update_share_history_item(share, days=None, batch_size=100):
 
 
 @log_time
-@retry(tries=4, delay=1, backoff=2)
 def update_share_list(batch_size=100):
     text = get_watch_list()
 
@@ -219,7 +221,7 @@ def update_share_list(batch_size=100):
 def get_watch_list():
     response = submit_request('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
                               headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'),
-                              params=(('h', '0'), ('r', '0')), timeout=10)
+                              params=(('h', '0'), ('r', '0')), retry_on_empty_response=True, timeout=10)
 
     '''
         separated with @ text
