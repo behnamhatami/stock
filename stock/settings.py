@@ -130,14 +130,14 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'timestamp': {
-            'format': '{asctime} {levelname} {message}',
+            'format': '{levelname} {message}',
             'style': '{',
         },
     },
     'handlers': {
         'file': {
-            'class': 'logging.FileHandler',
-            'filename': '/var/log/django.log',
+            'class': 'logging.handlers.SysLogHandler',
+            'address': '/dev/log',
             'formatter': 'timestamp',
             'level': 'INFO',
         },
