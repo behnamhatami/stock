@@ -130,7 +130,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'timestamp': {
-            'format': '{levelname} {message}',
+            'format': 'stock {levelname} {message}',
             'style': '{',
         },
     },
