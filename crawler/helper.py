@@ -30,7 +30,7 @@ def get_headers(share, referer=None):
 
 
 def submit_request(url, params, headers, retry_on_empty_response=False, timeout=5):
-    response = requests.get(url, params=params, headers=headers, timeout=timeout)
+    response = requests.get(url, params=params, headers=headers, timeout=timeout, verify=False)
 
     if response.status_code != 200:
         raise Exception(f"Http Error: {response.status_code}, {url.split('/')[-1]}, {params}")
@@ -156,7 +156,7 @@ def update_share_history_item(share, days=None, batch_size=100):
         ('Top', days),
         ('A', '0'),
     )
-    response = submit_request('http://members.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
+    response = submit_request('http://tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
                               headers=get_headers(share), timeout=25)
 
     share.last_update = timezone.now()
