@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/3.0/ref/settings/
 import os
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
+import sys
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Quick-start development settings - unsuitable for production
@@ -136,8 +138,7 @@ LOGGING = {
     },
     'handlers': {
         'file': {
-            'class': 'logging.handlers.SysLogHandler',
-            'address': '/dev/log',
+            'class': 'logging.handlers.SysLogHandler' if sys.platform.startswith('linux') else 'logging.NullHandler',
             'formatter': 'timestamp',
             'level': 'INFO',
         },
