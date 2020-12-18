@@ -137,10 +137,11 @@ LOGGING = {
     },
     'handlers': {
         'file': {
-            'class': 'logging.handlers.SysLogHandler' if sys.platform.startswith('linux') else 'logging.NullHandler',
+            'class': 'logging.handlers.SysLogHandler',
+            'address': '/dev/log',
             'formatter': 'timestamp',
             'level': 'INFO',
-        },
+        } if sys.platform.startswith('linux') else {'class': 'logging.NullHandler'},
         'console': {
             'class': 'logging.StreamHandler',
             'level': 'INFO',
