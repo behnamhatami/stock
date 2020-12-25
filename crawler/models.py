@@ -130,10 +130,7 @@ class Share(models.Model):
                 }
                 ticker = dictionary.get(ticker, ticker)
                 candidates = Share.objects.filter(ticker=ticker)
-                if candidates.count() > 1:
-                    share = candidates.filter(enable=True)[0]
-                else:
-                    share = candidates[0]
+                share = candidates[0] if candidates.count() == 1 else candidates.filter(enable=True)[0]
 
                 return dt, int(parts[1]), share
             elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
