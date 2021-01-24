@@ -1,5 +1,5 @@
 Django==3.1.5
-pandas==1.2.0
+pandas==1.2.1
 django_pandas==0.6.2
 requests==2.25.1
 django_cron==0.5.1
