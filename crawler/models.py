@@ -106,13 +106,24 @@ class Share(models.Model):
     def compute_value(self, count, price):
         # logger.info(f'{self.group.id}, {count}, {price}')
         if self.group_id == 59:  # maskan
-            return count * price * ((1 - 0.0024) if count < 0 else (1 + 0.0049))
-        elif self.group_id in [68, 69]:  # etf or akhza
-            return count * price * ((1 - 0.000725) if count < 0 else (1 + 0.000725))
+            ratio = -0.0024 if count < 0 else 0.0049
+        elif self.group_id == 68 or self.extra_data['نام لاتین شرکت'].endswith('ETF'):  # etf
+            if self.extra_data['کد زیر گروه صنعت'] == '6812':
+                ratio = -0.0001875 if count < 0 else 0.0001875
+            elif self.extra_data['کد زیر گروه صنعت'] == '6810':
+                ratio = -0.00066125 if count < 0 else 0.0006075
+            else:
+                ratio = --0.000725 if count < 0 else 0.000725
+        elif self.group_id == 69 or self.bazaar_group == 208:
+            ratio = -0.000725 if count < 0 else 0.000725
         elif self.group_id == 56 and self.ticker.startswith('سکه'):
-            return count * price * ((1 - 0.00125) if count < 0 else (1 + 0.00125))
+            ratio = -0.00125 if count < 0 else 0.00125
+        elif self.is_sell_option or self.is_buy_option:
+            ratio = -0.00103 if count < 0 else 0.00103
         else:  # TODO: Boors and fara boors could be separated
-            return count * price * ((1 - 0.0064125) if count < 0 else (1 + 0.0064125))
+            ratio = -0.0064125 if count < 0 else 0.0064125
+
+        return count * price * (1 + ratio)
 
     def parse_data(self):
         try:
