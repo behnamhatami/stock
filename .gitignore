@@ -109,3 +109,4 @@ venv.bak/
 stock.sql
 report.html
 /data/
+/static/
