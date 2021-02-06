@@ -1,18 +1,18 @@
 from datetime import datetime, time
 
 from django.utils import timezone
-from django.utils.timezone import get_current_timezone
+from django.utils.timezone import make_aware
 from persiantools.jdatetime import JalaliDate
 
 
 def convert_date_time_string_to_datetime(datetime_string):
     date_part, time_part = datetime_string.split()
-    return get_current_timezone().localize(
-        datetime.combine(convert_date_string_to_date(date_part), convert_time_string_to_time(time_part)))
+    return make_aware(datetime.combine(convert_date_string_to_date(date_part), convert_time_string_to_time(time_part)))
 
 
 def convert_date_string_to_date(date_string):
-    date_parts = date_string.split('/') if '/' in date_string else (date_string[:-4], date_string[-4:-2], date_string[-2:])
+    date_parts = date_string.split('/') if '/' in date_string else (
+        date_string[:-4], date_string[-4:-2], date_string[-2:])
     date_parts = list(map(int, date_parts))
     if 0 <= date_parts[0] <= 31 < date_parts[2]:
         date_parts.reverse()
@@ -23,9 +23,8 @@ def convert_date_string_to_date(date_string):
     return JalaliDate(*date_parts).to_gregorian()
 
 
-def convert_time_integer_to_datetime(dt, time_integer):
-    return get_current_timezone().localize(
-        datetime(dt.year, dt.month, dt.day, time_integer // 10000, time_integer % 10000 // 100, time_integer % 100))
+def convert_time_integer_to_time(time_integer):
+    return time(hour=time_integer // 10000, minute=time_integer % 10000 // 100, second=time_integer % 100)
 
 
 def convert_time_string_to_time(string):
