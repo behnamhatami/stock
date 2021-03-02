@@ -1,4 +1,5 @@
 import logging
+import re
 from functools import partial
 
 from django.core.management.base import BaseCommand
@@ -16,7 +17,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         persian_char = ["آ", "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع",
                         "غ", "ف", "ق", "ل", "م", "ن", "ه", "و", "پ", "چ", "ژ", "ک", "گ", "ی"]
-        tickers = list(Share.objects.all().values_list('ticker', flat=True))
+        tickers = set(Share.objects.all().values_list('ticker', flat=True))
+        numbered_tickers = {re.sub(r'[0-9]+', '', ticker) for ticker in tickers if bool(re.search(r'\d', ticker))}
+        print('صشستا' in numbered_tickers)
         two_chars = [x + y for x in persian_char for y in persian_char]
 
         three_chars = []
@@ -25,10 +28,9 @@ class Command(BaseCommand):
                 for extra_char in persian_char:
                     three_chars.append(name + extra_char)
 
-        logger.info(
-            f"searching for {len(tickers)} ticker name, {len(two_chars)} two chars and {len(three_chars)} three chars")
+        logger.info(f"search for {len(tickers)} ticker name, {len(two_chars)} two and {len(three_chars)} three chars")
 
-        jobs = [partial(search_share, name) for name in tickers + two_chars + three_chars]
+        jobs = [partial(search_share, name) for name in list(tickers | numbered_tickers) + two_chars + three_chars]
         run_jobs("Update Share List by Search", jobs, log=True, log_exception_on_failure=False)
         jobs = [partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)]
         run_jobs("Update Share Detail Info", jobs, log=True, log_exception_on_failure=False)
