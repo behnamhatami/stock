@@ -19,7 +19,6 @@ class Command(BaseCommand):
                         "غ", "ف", "ق", "ل", "م", "ن", "ه", "و", "پ", "چ", "ژ", "ک", "گ", "ی"]
         tickers = set(Share.objects.all().values_list('ticker', flat=True))
         numbered_tickers = {re.sub(r'[0-9]+', '', ticker) for ticker in tickers if bool(re.search(r'\d', ticker))}
-        print('صشستا' in numbered_tickers)
         two_chars = [x + y for x in persian_char for y in persian_char]
 
         three_chars = []
