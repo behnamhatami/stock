@@ -1,9 +1,9 @@
 Django==3.1.7
-pandas==1.2.2
+pandas==1.2.3
 django_pandas==0.6.4
 requests==2.25.1
 django_cron==0.5.1
-persiantools==2.0.0
+persiantools==2.1.1
 retry==0.9.2
 beautifulsoup4==4.9.3
 stockstats==0.3.2
