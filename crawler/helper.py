@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from django.utils import timezone
 from fake_useragent import UserAgent
 from persiantools import characters
-from retry import retry
+from tenacity import stop_after_attempt, wait_random_exponential, after_log, retry
 
 from crawler.decorators import log_time
 from crawler.models import Share, ShareDailyHistory, ShareGroup
@@ -29,6 +29,8 @@ def get_headers(share, referer=None):
     }
 
 
+@retry(reraise=True, stop=stop_after_attempt(6), wait=wait_random_exponential(multiplier=1, max=60),
+       after=after_log(logger, logging.DEBUG))
 def submit_request(url, params, headers, retry_on_empty_response=False, timeout=5):
     response = requests.get(url, params=params, headers=headers, timeout=timeout, verify=False)
 
@@ -68,7 +70,6 @@ def run_jobs(job_title, jobs, max_workers=100, log=True, log_exception_on_failur
 
 
 @log_time
-@retry(tries=4, delay=1, backoff=1.2)
 def update_share_list_by_group(group):
     params = (
         ('g', group.id),
@@ -84,7 +85,6 @@ def update_share_list_by_group(group):
 
 
 @log_time
-@retry(tries=4, delay=1, backoff=1.2)
 def update_share_groups():
     response = requests.get('http://www.tsetmc.com/Loader.aspx?ParTree=111C1213')
 
@@ -110,7 +110,6 @@ def update_share_groups():
     logger.info(f"Share group info updated. number of groups: {ShareGroup.objects.count()}")
 
 
-@retry(tries=4, delay=1, backoff=1.2, logger=None)
 def search_share(keyword):
     response = submit_request('http://www.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
                               headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15'), timeout=25)
@@ -146,7 +145,6 @@ def search_share(keyword):
         logger.info(f"update share list, {len(new_list)} added ({new_list}), {len(update_list)} updated.")
 
 
-@retry(tries=6, delay=1, backoff=2, logger=None)
 def update_share_history_item(share, days=None, batch_size=100):
     if days is None:
         days = (timezone.now() - share.last_update).days + 1 if share.last_update else 999999
@@ -217,7 +215,6 @@ def update_share_list(batch_size=100):
     logger.info(f"update share list, {len(new_list)} ({new_list}) added, {len(update_list)} updated.")
 
 
-@retry(tries=4, delay=1, backoff=2)
 def get_watch_list():
     response = submit_request('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
                               headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'),
