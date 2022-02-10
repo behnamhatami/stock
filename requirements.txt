@@ -1,4 +1,4 @@
-Django==3.2.9
+Django==3.2.12
 pandas==1.3.4
 django_pandas==0.6.6
 requests==2.26.0
