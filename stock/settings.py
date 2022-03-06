@@ -62,6 +62,8 @@ DJANGO_CRON_LOCK_BACKEND = "django_cron.backends.lock.file.FileLock"
 DJANGO_CRON_DELETE_LOGS_OLDER_THAN = 10
 ALLOW_PARALLEL_RUNS = True
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 ROOT_URLCONF = 'stock.urls'
 
 TEMPLATES = [
