@@ -127,7 +127,11 @@ def search_share(keyword):
         try:
             share = Share.objects.get(id=id)
         except Share.DoesNotExist:
-            share = Share()
+            for share in new_list:
+                if share.id == row[2]:
+                    break
+            else:
+                share = Share()
 
         (update_list if share.id else new_list).append(share)
 
