@@ -137,7 +137,8 @@ class Share(models.Model):
 
                 ticker = parts[0].strip()[8:].strip()
                 dictionary = {
-                    'ملی مس': 'فملی'
+                    'ملی مس': 'فملی',
+                    'حافرین': 'حآفرين',
                 }
                 ticker = dictionary.get(ticker, ticker)
                 candidates = Share.objects.filter(ticker=ticker)
