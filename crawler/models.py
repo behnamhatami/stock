@@ -139,7 +139,7 @@ class Share(models.Model):
                 dictionary = {
                     'ملی مس': 'فملی',
                     'حافرین': 'حآفرین',
-                    'ص.دارا': 'دارا يكم',
+                    'ص.دارا': 'دارا یکم',
                 }
                 ticker = dictionary.get(ticker, ticker)
                 candidates = Share.objects.filter(ticker=ticker)
