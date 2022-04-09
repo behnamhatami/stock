@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from django.utils import timezone
-from fake_useragent import UserAgent
+from getuseragent import UserAgent
 from persiantools import characters
 from tenacity import stop_after_attempt, wait_random_exponential, after_log, retry
 
@@ -19,7 +19,7 @@ user_agent = UserAgent()
 
 def get_headers(share, referer=None):
     return {
-        'User-Agent': user_agent.random,
+        'User-Agent': user_agent.Random(),
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.5',
         'DNT': '1',

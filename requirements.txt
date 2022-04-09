@@ -7,7 +7,7 @@ persiantools==3.0.0
 beautifulsoup4==4.10.0
 stockstats==0.4.1
 pytz==2021.3
-fake-useragent==0.1.11
+getuseragent==0.0.7
 matplotlib==3.5.1
 numpy==1.22.3
 python-bidi==0.4.2
