@@ -1,12 +1,12 @@
 Django==4.0.3
-pandas==1.4.1
+pandas==1.4.2
 django_pandas==0.6.6
 requests==2.27.1
 django4-cron==0.5.1
 persiantools==3.0.0
-beautifulsoup4==4.10.0
+beautifulsoup4==4.11.1
 stockstats==0.4.1
-pytz==2021.3
+pytz==2022.1
 getuseragent==0.0.7
 matplotlib==3.5.1
 numpy==1.22.3
