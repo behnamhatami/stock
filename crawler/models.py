@@ -143,6 +143,10 @@ class Share(models.Model):
                 }
                 ticker = dictionary.get(ticker, ticker)
                 candidates = Share.objects.filter(ticker=ticker)
+                if candidates.count() == 0:
+                    logger.warning(f"{self.ticker} description ignored as option")
+                    return None, None, None
+                
                 share = candidates[0] if candidates.count() == 1 else candidates.filter(enable=True)[0]
 
                 return dt, int(parts[1]), share
