@@ -3,6 +3,7 @@ import logging
 from io import StringIO
 
 import pandas as pd
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
 from django.utils import timezone
@@ -117,7 +118,7 @@ def search_share(keyword):
     if len(response.text) == 0:
         return
 
-    lables = ['ticker', 'description', 'id', '', '', '', 'bazaar type', 'enable', 'bazaar', 'bazaar']
+    # lables = ['ticker', 'description', 'id', '', '', '', 'bazaar type', 'enable', 'bazaar', 'bazaar']
     df = pd.read_csv(StringIO(response.text), sep=',', lineterminator=';', header=None)
     df = df.where((pd.notnull(df)), None)
 
@@ -188,7 +189,7 @@ def update_share_list(batch_size=100):
     text = get_watch_list()
 
     df = pd.read_csv(StringIO(text.split("@")[2]), sep=',', lineterminator=';', header=None)
-    df = df.where((pd.notnull(df)), None)
+    df = df.replace({np.nan: None})
 
     new_list, update_list = [], []
     for index, row in df.iterrows():

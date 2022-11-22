@@ -130,7 +130,8 @@ class Share(models.Model):
             if self.is_buy_option or self.is_sell_option:
                 parts = self.description.split('-')
                 if len(parts) != 3:
-                    logger.warning(f"{self.ticker} description ignored as option")
+                    if self.enable:
+                        logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
 
                 dt = convert_date_string_to_date(parts[2])
@@ -144,9 +145,10 @@ class Share(models.Model):
                 ticker = dictionary.get(ticker, ticker)
                 candidates = Share.objects.filter(ticker=ticker)
                 if candidates.count() == 0:
-                    logger.warning(f"{self.ticker} description ignored as option")
+                    if self.enable:
+                        logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
-                
+
                 share = candidates[0] if candidates.count() == 1 else candidates.filter(enable=True)[0]
 
                 return dt, int(parts[1]), share
@@ -159,19 +161,19 @@ class Share(models.Model):
                     result = Share.objects.filter(ticker=self.ticker[:-1])
 
                 result = sorted(result,
-                                key=lambda share: share.last_day_history['date'] if share.history_size else date(1970,
-                                                                                                                 1, 1))
+                                key=lambda s: s.last_day_history['date'] if s.history_size else date(1970, 1, 1))
 
                 if result:
                     return None, None, result[-1]
                 else:
-                    logger.warning(f"{self.ticker} does not match any base share")
+                    if self.enable:
+                        logger.warning(f"{self.ticker} does not match any base share")
                     return None, None, None
             else:
                 return None, None, None
 
-        except Exception as e:
-            logger.exception(f"parsing {self.ticker} description encounter error. ({self.__dict__})")
+        except:
+            logger.exception(f"parsing {self.ticker} description encounter error. ({self.__dict__})", exc_info=True)
             return None, None, None
 
     @cached_property
