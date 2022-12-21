@@ -204,7 +204,7 @@ def update_share_list(batch_size=100):
         share.id = row[0]
         share.ticker = characters.ar_to_fa(str(row[2])).strip()
         share.description = characters.ar_to_fa(row[3]).strip()
-        share.eps = row[14]
+        share.eps = row[14] if row[14] and row[14] != 'nan' and not math.isnan(row[14]) else None
         share.base_volume = row[15]
         share.bazaar_type = row[17]
         share.group = ShareGroup.objects.get(id=row[18])
