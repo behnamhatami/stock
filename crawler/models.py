@@ -143,13 +143,14 @@ class Share(models.Model):
                     'ص.دارا': 'دارا یکم',
                 }
                 ticker = dictionary.get(ticker, ticker)
-                candidates = Share.objects.filter(ticker=ticker)
-                if candidates.count() == 0:
+                candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
+                              candidate.history_size > 0]
+                if len(candidates) == 0:
                     if self.enable:
                         logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
 
-                share = candidates[0] if candidates.count() == 1 else candidates.filter(enable=True)[0]
+                share = sorted(candidates, key=lambda candidate: candidate.last_day_history['date'], reverse=True)[0]
 
                 return dt, int(parts[1]), share
             elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
