@@ -141,6 +141,9 @@ class Share(models.Model):
                     'ملی مس': 'فملی',
                     'حافرین': 'حآفرین',
                     'ص.دارا': 'دارا یکم',
+                    'ص آگاه': 'پتروآگاه',
+                    'هم‌وزن': 'هم وزن',
+                    'اخز101': 'اخزا101',
                 }
                 ticker = dictionary.get(ticker, ticker)
                 candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
