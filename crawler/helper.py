@@ -47,7 +47,10 @@ def after_log(
             args, kwargs = [], {}
         else:
             fn_name = _utils.get_callback_name(retry_state.fn)
-            args, kwargs = retry_state.args, retry_state.kwargs
+            args, kwargs = list(retry_state.args), dict(retry_state.kwargs)
+            if 'headers' in kwargs:
+                del kwargs['headers']
+                
         logger.log(
             log_level,
             f"Finished call to '{fn_name}/{args}/{kwargs}"
