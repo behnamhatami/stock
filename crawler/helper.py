@@ -48,12 +48,14 @@ def after_log(
         else:
             fn_name = _utils.get_callback_name(retry_state.fn)
             args, kwargs = list(retry_state.args), dict(retry_state.kwargs)
-            if 'headers' in kwargs:
-                del kwargs['headers']
+            for key in {'headers', 'timeout'}:
+                if key in kwargs:
+                    del kwargs[key]
+
                 
         logger.log(
             log_level,
-            f"Finished call to '{fn_name}/{args}/{kwargs}"
+            f"Finished call to '{fn_name}/{args}/{kwargs} "
             f"after {sec_format % retry_state.seconds_since_start}(s), "
             f"this was the {_utils.to_ordinal(retry_state.attempt_number)} time calling it.",
         )
