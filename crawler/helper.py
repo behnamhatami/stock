@@ -1,5 +1,7 @@
 import concurrent
 import logging
+import math
+import typing
 from io import StringIO
 
 import pandas as pd
@@ -9,7 +11,8 @@ from bs4 import BeautifulSoup
 from django.utils import timezone
 from getuseragent import UserAgent
 from persiantools import characters
-from tenacity import stop_after_attempt, wait_random_exponential, after_log, retry
+from tenacity import stop_after_attempt, wait_random_exponential, retry, RetryCallState
+from tenacity import _utils
 
 from crawler.decorators import log_time
 from crawler.models import Share, ShareDailyHistory, ShareGroup
@@ -28,6 +31,31 @@ def get_headers(share, referer=None):
         'Referer': referer if referer else f'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}',
         'X-Requested-With': 'XMLHttpRequest',
     }
+
+
+def after_log(
+        logger: "logging.Logger",
+        log_level: int,
+        sec_format: str = "%0.3f",
+) -> typing.Callable[[RetryCallState], None]:
+    """After call strategy that logs to some logger the finished attempt."""
+
+    def log_it(retry_state: RetryCallState) -> None:
+        if retry_state.fn is None:
+            # NOTE(sileht): can't really happen, but we must please mypy
+            fn_name = "<unknown>"
+            args, kwargs = [], {}
+        else:
+            fn_name = _utils.get_callback_name(retry_state.fn)
+            args, kwargs = retry_state.args, retry_state.kwargs
+        logger.log(
+            log_level,
+            f"Finished call to '{fn_name}/{args}/{kwargs}"
+            f"after {sec_format % retry_state.seconds_since_start}(s), "
+            f"this was the {_utils.to_ordinal(retry_state.attempt_number)} time calling it.",
+        )
+
+    return log_it
 
 
 @retry(reraise=True, stop=stop_after_attempt(6), wait=wait_random_exponential(multiplier=1, max=60),
