@@ -38,7 +38,7 @@ class Command(BaseCommand):
                         results.update({key: str(value) for key, value in result.items()})
 
                 if results:
-                    ticker_link = f'<a href="http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}">{share.ticker}</a>'
+                    ticker_link = f'<a href="http://old.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}">{share.ticker}</a>'
                     row_list.append({"ticker": ticker_link, **results})
                     logger.info(f"{share.ticker}: {results}")
 

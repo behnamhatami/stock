@@ -28,7 +28,7 @@ def get_headers(share, referer=None):
         'Accept-Language': 'en-US,en;q=0.5',
         'DNT': '1',
         'Connection': 'keep-alive',
-        'Referer': referer if referer else f'http://www.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}',
+        'Referer': referer if referer else f'http://old.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}',
         'X-Requested-With': 'XMLHttpRequest',
     }
 
@@ -110,7 +110,7 @@ def update_share_list_by_group(group):
         ('t', 'g'),
         ('s', '0'),
     )
-    response = requests.get('http://www.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=10)
+    response = requests.get('http://old.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=10)
 
     if response.status_code != 200:
         raise Exception(f"Http Error: {response.status_code}")
@@ -120,7 +120,7 @@ def update_share_list_by_group(group):
 
 @log_time
 def update_share_groups():
-    response = requests.get('http://www.tsetmc.com/Loader.aspx?ParTree=111C1213')
+    response = requests.get('http://old.tsetmc.com/Loader.aspx?ParTree=111C1213')
 
     if response.status_code != 200:
         raise Exception(f"Http Error: {response.status_code}")
@@ -145,8 +145,8 @@ def update_share_groups():
 
 
 def search_share(keyword):
-    response = submit_request('http://www.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
-                              headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15'), timeout=25)
+    response = submit_request('http://old.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
+                              headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15'), timeout=25)
 
     if len(response.text) == 0:
         return
@@ -192,7 +192,7 @@ def update_share_history_item(share, days=None, batch_size=100):
         ('Top', days),
         ('A', '0'),
     )
-    response = submit_request('http://tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
+    response = submit_request('http://old.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
                               headers=get_headers(share), timeout=25)
 
     share.last_update = timezone.now()
@@ -254,8 +254,8 @@ def update_share_list(batch_size=100):
 
 
 def get_watch_list():
-    response = submit_request('http://www.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
-                              headers=get_headers(None, 'http://www.tsetmc.com/Loader.aspx?ParTree=15131F'),
+    response = submit_request('http://old.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
+                              headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15131F'),
                               params=(('h', '0'), ('r', '0')), retry_on_empty_response=True, timeout=10)
 
     '''
@@ -276,7 +276,7 @@ def get_watch_list():
 
 
 def get_share_detailed_info(share):
-    response = requests.get('http://www.tsetmc.com/Loader.aspx', headers=get_headers(share),
+    response = requests.get('http://old.tsetmc.com/Loader.aspx', headers=get_headers(share),
                             params=(('Partree', '15131M'), ('i', share.id),), timeout=10)
 
     data = {}
