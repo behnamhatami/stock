@@ -23,8 +23,17 @@ def convert_date_string_to_date(date_string):
     return JalaliDate(*date_parts).to_gregorian()
 
 
-def convert_time_integer_to_time(time_integer):
-    return time(hour=time_integer // 10000, minute=time_integer % 10000 // 100, second=time_integer % 100)
+def convert_integer_to_parts(int_format: int, parts: list[int] = (4, 2)) -> list[int]:
+    parts = list(parts)
+    parts.append(0)
+    result: list[int] = [int_format // 10 ** parts[0]]
+    for index in range(len(parts) - 1):
+        result.append(int_format % 10 ** parts[index] // 10 ** parts[index + 1])
+    return result
+
+
+def convert_time_integer_to_time(time_integer: int) -> time:
+    return time(*convert_integer_to_parts(time_integer))
 
 
 def convert_time_string_to_time(string):
