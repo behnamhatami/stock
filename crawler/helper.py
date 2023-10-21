@@ -4,15 +4,15 @@ import math
 import typing
 from io import StringIO
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from django.utils import timezone
 from getuseragent import UserAgent
 from persiantools import characters
-from tenacity import stop_after_attempt, wait_random_exponential, retry, RetryCallState
 from tenacity import _utils
+from tenacity import stop_after_attempt, wait_random_exponential, retry, RetryCallState
 
 from crawler.decorators import log_time
 from crawler.models import Share, ShareDailyHistory, ShareGroup
@@ -52,7 +52,6 @@ def after_log(
                 if key in kwargs:
                     del kwargs[key]
 
-                
         logger.log(
             log_level,
             f"Finished call to '{fn_name}/{args}/{kwargs} "
@@ -65,7 +64,7 @@ def after_log(
 
 @retry(reraise=True, stop=stop_after_attempt(6), wait=wait_random_exponential(multiplier=1, max=60),
        after=after_log(logger, logging.DEBUG))
-def submit_request(url, params, headers, retry_on_empty_response=False, timeout=5):
+def submit_request(url, params, headers, retry_on_empty_response=False, retry_on_html_response=False, timeout=5):
     response = requests.get(url, params=params, headers=headers, timeout=timeout, verify=False)
 
     if response.status_code != 200:
@@ -73,6 +72,9 @@ def submit_request(url, params, headers, retry_on_empty_response=False, timeout=
 
     if retry_on_empty_response and len(response.text.strip()) == 0:
         raise Exception(f"Http Error: empty response, {url.split('/')[-1]}, {params}")
+
+    if retry_on_html_response and '<html>' in response.text:
+        raise Exception(f"Http Error: html response, {url.split('/')[-1]}, {params}")
 
     return response
 
@@ -146,7 +148,8 @@ def update_share_groups():
 
 def search_share(keyword):
     response = submit_request('http://old.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
-                              headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15'), timeout=25)
+                              headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15'),
+                              retry_on_html_response=True, timeout=25)
 
     if len(response.text) == 0:
         return
