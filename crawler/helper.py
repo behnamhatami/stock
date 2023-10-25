@@ -73,7 +73,7 @@ def submit_request(url, params, headers, retry_on_empty_response=False, retry_on
     if retry_on_empty_response and len(response.text.strip()) == 0:
         raise Exception(f"Http Error: empty response, {url.split('/')[-1]}, {params}")
 
-    if retry_on_html_response and '<html>' in response.text:
+    if retry_on_html_response and ('<html>' in response.text or '<!doctype html>' in response.text):
         raise Exception(f"Http Error: html response, {url.split('/')[-1]}, {params}")
 
     return response
@@ -259,7 +259,8 @@ def update_share_list(batch_size=100):
 def get_watch_list():
     response = submit_request('http://old.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
                               headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15131F'),
-                              params=(('h', '0'), ('r', '0')), retry_on_empty_response=True, timeout=10)
+                              params=(('h', '0'), ('r', '0')), retry_on_empty_response=True,
+                              retry_on_html_response=True, timeout=10)
 
     '''
         separated with @ text
