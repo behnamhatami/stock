@@ -82,6 +82,7 @@ class Share(models.Model):
         return date.today() - timedelta(days=Share.DAY_OFFSET)
 
     id = models.BigIntegerField(null=False, blank=False, primary_key=True)
+    isin = models.CharField(null=True, blank=False, max_length=256, db_index=True, unique=True)
     ticker = models.CharField(null=False, blank=False, max_length=256, db_index=True)
     description = models.CharField(max_length=256)
 

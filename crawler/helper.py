@@ -294,4 +294,5 @@ def get_share_detailed_info(share):
 
     share.extra_data = data
     share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
+    share.isin = data['کد 12 رقمی نماد']
     share.save()
