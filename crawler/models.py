@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from datetime import timedelta, date
+from string import digits
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
@@ -58,6 +59,8 @@ class ShareGroup(models.Model):
 
 
 class Share(models.Model):
+    BASE_DATE = date(1970, 1, 1)
+
     class BazaarTypeChoices(models.IntegerChoices):
         NAGHDI = 1
         PURE = 2
@@ -128,55 +131,84 @@ class Share(models.Model):
 
     def parse_data(self):
         try:
-            if self.is_buy_option or self.is_sell_option:
+            if self.is_buy_option or self.is_sell_option or 'اختیار' in self.description:
                 parts = self.description.split('-')
+                if len(parts) == 2:
+                    parts = parts[0].rstrip(digits), parts[0][len(parts[0].rstrip(digits)):], parts[1]
+
                 if len(parts) != 3:
                     if self.enable:
                         logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
 
                 dt = convert_date_string_to_date(parts[2])
+                ticker_parts = parts[0].replace('.', ' ').strip().split()
 
-                ticker = parts[0].strip()[8:].strip()
                 dictionary = {
                     'ملی مس': 'فملی',
                     'حافرین': 'حآفرین',
-                    'ص.دارا': 'دارا یکم',
+                    'ص دارا': 'دارا یکم',
                     'ص آگاه': 'پتروآگاه',
                     'هم‌وزن': 'هم وزن',
                     'اخز101': 'اخزا101',
+                    'معادن': 'ومعادن',
+                    'بهمن': 'خبهمن',
+                    'غدیر': 'وغدیر',
+                    'تجارت': 'وتجارت',
+                    'صندوق': 'وصندوق',
+                    'امید': 'وامید',
                 }
-                ticker = dictionary.get(ticker, ticker)
-                candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
-                              candidate.history_size > 0]
-                if len(candidates) == 0:
+
+                for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
+                    ticker = dictionary.get(ticker, ticker)
+                    candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
+                                  candidate.history_size > 0]
+                    if len(candidates) == 0:
+                        continue
+                    elif len(candidates) > 1:
+                        candidates = sorted(candidates, key=lambda candidate: candidate.last_day_history['date'],
+                                            reverse=True)
+
+                    return dt, int(parts[1]), candidates[0]
+                else:
                     if self.enable:
                         logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
 
-                share = sorted(candidates, key=lambda candidate: candidate.last_day_history['date'], reverse=True)[0]
-
-                return dt, int(parts[1]), share
             elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
                 return convert_date_string_to_date(re.findall(r'\d+$', self.description)[0]), None, None
             elif self.is_rights_issue:
                 if Share.objects.filter(enable=True, ticker=self.ticker[:-1]).exists():
-                    result = Share.objects.filter(enable=True, ticker=self.ticker[:-1])
+                    candidates = Share.objects.filter(enable=True, ticker=self.ticker[:-1])
                 else:
-                    result = Share.objects.filter(ticker=self.ticker[:-1])
+                    candidates = Share.objects.filter(ticker=self.ticker[:-1])
 
-                result = sorted(result,
-                                key=lambda s: s.last_day_history['date'] if s.history_size else date(1970, 1, 1))
-
-                if result:
-                    return None, None, result[-1]
-                else:
+                if len(candidates) == 0:
                     if self.enable:
                         logger.warning(f"{self.ticker} does not match any base share")
                     return None, None, None
+                elif len(candidates) > 1:
+                    candidates = sorted(candidates, reverse=True,
+                                        key=lambda s: (
+                                            s.last_day_history['date'] if s.history_size else Share.BASE_DATE,
+                                            s.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']))
+
+                return None, None, candidates[0]
+            elif self.ticker[-1].isdigit():
+                candidates = Share.objects.filter(enable=True, ticker=self.ticker.rstrip(digits),
+                                                  description=self.description)
+
+                if len(candidates) == 0:
+                    return None, None, None
+                elif len(candidates) > 1:
+                    candidates = sorted(candidates, reverse=True,
+                                        key=lambda s: (
+                                            s.last_day_history['date'] if s.history_size else Share.BASE_DATE,
+                                            s.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']))
+
+                return None, None, candidates[0]
             else:
                 return None, None, None
-
         except:
             logger.exception(f"parsing {self.ticker} description encounter error. ({self.__dict__})", exc_info=True)
             return None, None, None
