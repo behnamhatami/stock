@@ -195,16 +195,15 @@ class Share(models.Model):
 
                 return None, None, candidates[0]
             elif self.ticker[-1].isdigit():
-                candidates = Share.objects.filter(enable=True, ticker=self.ticker.rstrip(digits),
-                                                  description=self.description)
+                candidates = Share.objects.filter(enable=True, ticker=self.ticker.rstrip(digits))
+                candidates = [candidate for candidate in candidates if
+                              candidate.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']]
 
                 if len(candidates) == 0:
                     return None, None, None
                 elif len(candidates) > 1:
                     candidates = sorted(candidates, reverse=True,
-                                        key=lambda s: (
-                                            s.last_day_history['date'] if s.history_size else Share.BASE_DATE,
-                                            s.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']))
+                                        key=lambda s: s.last_day_history['date'] if s.history_size else Share.BASE_DATE)
 
                 return None, None, candidates[0]
             else:
