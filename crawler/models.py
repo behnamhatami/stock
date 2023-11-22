@@ -187,11 +187,11 @@ class Share(models.Model):
 
     @cached_property
     def is_buy_option(self):
-        return self.ticker[0] == 'ض' and (self.bazaar_group == 311 or self.bazaar_group is None)
+        return self.ticker[0] == 'ض' and 'اختیار' in self.description
 
     @cached_property
     def is_sell_option(self):
-        return self.ticker[0] == 'ط' and (self.bazaar_group == 312 or self.bazaar_group is None)
+        return self.ticker[0] == 'ط' and 'اختیار' in self.description
 
     @cached_property
     def is_bond(self):
