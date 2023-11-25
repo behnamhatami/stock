@@ -297,6 +297,9 @@ class Share(models.Model):
     def history_size(self):
         return self.daily_history.shape[0]
 
+    def get_average_trade_value(self, days: int) -> float:
+        return self.daily_history[-days:]['value'].mean()
+
     def __str__(self):
         return self.ticker
 
