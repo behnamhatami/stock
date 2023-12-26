@@ -196,7 +196,7 @@ def update_share_history_item(share, days=None, batch_size=100):
         ('A', '0'),
     )
     response = submit_request('http://old.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
-                              headers=get_headers(share), timeout=25)
+                              headers=get_headers(share), retry_on_html_response=True, timeout=25)
 
     share.last_update = timezone.now()
 
