@@ -37,14 +37,6 @@ class Share(models.Model):
         FaraBoorse = 2
 
     DAY_OFFSET_DEFAULT = 1
-    DAY_OFFSET = DAY_OFFSET_DEFAULT
-    NORMALIZE_STRATEGY = "scaler"
-
-    INFO = dict()
-
-    @staticmethod
-    def get_today():
-        return date.today() - timedelta(days=Share.DAY_OFFSET)
 
     @staticmethod
     def get_today_new(day_offset: int = DAY_OFFSET_DEFAULT):
