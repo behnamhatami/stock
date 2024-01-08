@@ -9,7 +9,7 @@ from crawler.models import Share
 
 
 class GoodPriceRightIssueAnalyzer(Analyzer):
-    def analyze(self, share):
+    def analyze(self, share: Share, day_offset: int):
         if share.is_rights_issue:
             main_share = share.base_share
             # df = pd.merge(share.daily_history, main_share.daily_history, left_on='Date', right_on='Date', how='inner')
@@ -22,6 +22,7 @@ class GoodPriceRightIssueAnalyzer(Analyzer):
             #     plt.title(share.ticker)
             #     plt.show()
 
-            if main_share.last_day_history['close'] / (share.last_day_history['close'] + 1000) > 1.1:
-                return {"good price right issue": {"price": share.last_day_history['close'],
-                                                   "main price": main_share.last_day_history['close']}}
+            if main_share.last_day_history(day_offset)['close'] / (
+                    share.last_day_history(day_offset)['close'] + 1000) > 1.1:
+                return {"good price right issue": {"price": share.last_day_history(day_offset)['close'],
+                                                   "main price": main_share.last_day_history(day_offset)['close']}}

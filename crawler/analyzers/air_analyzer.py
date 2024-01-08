@@ -8,23 +8,26 @@ class AirAnalyzer(Analyzer):
     def __init__(self, threshold=10):
         self.threshold = threshold
 
-    def analyze(self, share):
-        history = share.daily_history
+    def analyze(self, share: Share, day_offset: int):
+        history = share.daily_history(day_offset)
 
-        if share.is_rights_issue or share.day_history(0)['date'] >= Share.get_today() - timedelta(
+        if share.is_rights_issue or share.day_history(0, day_offset)['date'] >= Share.get_today_new(
+                day_offset) - timedelta(
                 days=self.threshold):
             return
 
-        if history['high'].max() == share.last_day_history['high']:
-            return {"aired": {"price": share.last_day_history['high']}}
+        last_day_history = share.last_day_history(day_offset)
 
-        if history['low'].min() == share.last_day_history['low']:
-            return {"dumped": {"price": share.last_day_history['low']}}
+        if history['high'].max() == last_day_history['high']:
+            return {"aired": {"price": last_day_history['high']}}
 
-        if history[history['date'] >= Share.get_today() - timedelta(days=30)]['low'].min() == \
-                share.last_day_history['low']:
-            return {"monthly lower bound": {"price": share.last_day_history['low']}}
+        if history['low'].min() == last_day_history['low']:
+            return {"dumped": {"price": last_day_history['low']}}
 
-        if history[history['date'] >= Share.get_today() - timedelta(days=180)]['low'].min() == \
-                share.last_day_history['low']:
-            return {"half year lower bound": {"price": share.last_day_history['low']}}
+        if history[history['date'] >= Share.get_today_new(day_offset) - timedelta(days=30)]['low'].min() == \
+                last_day_history['low']:
+            return {"monthly lower bound": {"price": last_day_history['low']}}
+
+        if history[history['date'] >= Share.get_today_new(day_offset) - timedelta(days=180)]['low'].min() == \
+                last_day_history['low']:
+            return {"half year lower bound": {"price": last_day_history['low']}}

@@ -26,14 +26,15 @@ class Command(BaseCommand):
         parser.add_argument('days', type=int, nargs='?', default=0)
 
     def handle(self, *args, **options):
-        Share.DAY_OFFSET = options.get('days', 0)
+        day_offset = options.get('days', 0)
 
         row_list = []
         for share in Share.objects.all().order_by('ticker'):
-            if share.history_size > 0 and share.last_day_history['date'] >= Share.get_today() - timedelta(days=1):
+            if share.history_size(day_offset) > 0 and share.last_day_history(day_offset)['date'] >= Share.get_today_new(
+                    day_offset) - timedelta(days=1):
                 results = dict()
                 for analyzer in self.daily_analyzers:
-                    result = analyzer.analyze(share)
+                    result = analyzer.analyze(share, day_offset)
                     if result:
                         results.update({key: str(value) for key, value in result.items()})
 
@@ -49,7 +50,7 @@ class Command(BaseCommand):
 
             from django.template import loader
             template = loader.get_template('daily_report.html')
-            html_out = template.render({'date': Share.get_today(),
+            html_out = template.render({'date': Share.get_today_new(day_offset),
                                         'daily_report_dataframe': df.to_html(escape=False)})
 
             with open(settings.BASE_DIR + "/report.html", 'w') as f:

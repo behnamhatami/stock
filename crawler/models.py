@@ -4,6 +4,7 @@ from datetime import timedelta, date
 from statistics import mean
 from string import digits
 
+from cachetools import cached, TTLCache
 from django.db import models
 from django.utils.functional import cached_property
 from django_pandas.managers import DataFrameManager
@@ -38,14 +39,16 @@ class Share(models.Model):
     DAY_OFFSET_DEFAULT = 1
     DAY_OFFSET = DAY_OFFSET_DEFAULT
     NORMALIZE_STRATEGY = "scaler"
-    HISTORY_CACHE = {}
-    CACHE_DATE = None
 
     INFO = dict()
 
     @staticmethod
     def get_today():
         return date.today() - timedelta(days=Share.DAY_OFFSET)
+
+    @staticmethod
+    def get_today_new(day_offset: int = DAY_OFFSET_DEFAULT):
+        return date.today() - timedelta(days=day_offset)
 
     id = models.BigIntegerField(null=False, blank=False, primary_key=True)
     isin = models.CharField(null=True, blank=False, max_length=256, db_index=True, unique=True)
@@ -125,14 +128,17 @@ class Share(models.Model):
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
                     ticker = dictionary.get(ticker, ticker)
                     candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
-                                  candidate.history_size > 0]
+                                  candidate.history_size() > 0]
                     if len(candidates) == 0:
                         continue
                     elif len(candidates) > 1:
-                        candidates = sorted(candidates, key=lambda candidate: candidate.last_day_history['date'],
+                        candidates = sorted(candidates, key=lambda candidate: candidate.last_day_history()['date'],
                                             reverse=True)
 
-                    return dt, int(parts[1]), candidates[0]
+                    if parts[1]:
+                        return dt, int(parts[1]), candidates[0]
+                    else:
+                        return None, None, None
                 else:
                     if self.enable:
                         logger.warning(f"{self.ticker} description ignored as option ({self.description})")
@@ -153,20 +159,21 @@ class Share(models.Model):
                 elif len(candidates) > 1:
                     candidates = sorted(candidates, reverse=True,
                                         key=lambda s: (
-                                            s.last_day_history['date'] if s.history_size else Share.BASE_DATE,
+                                            s.last_day_history()['date'] if s.history_size() > 0 else Share.BASE_DATE,
                                             s.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']))
 
                 return None, None, candidates[0]
             elif self.ticker[-1].isdigit():
                 candidates = Share.objects.filter(enable=True, ticker=self.ticker.rstrip(digits))
-                candidates = [candidate for candidate in candidates if
+                candidates = [candidate for candidate in candidates if candidate.extra_data and self.extra_data and
                               candidate.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']]
 
                 if len(candidates) == 0:
                     return None, None, None
                 elif len(candidates) > 1:
                     candidates = sorted(candidates, reverse=True,
-                                        key=lambda s: s.last_day_history['date'] if s.history_size else Share.BASE_DATE)
+                                        key=lambda s: s.last_day_history()[
+                                            'date'] if s.history_size() > 0 else Share.BASE_DATE)
 
                 return None, None, candidates[0]
             else:
@@ -195,31 +202,17 @@ class Share(models.Model):
     def is_special(self):
         return self.is_rights_issue or self.is_buy_option or self.is_sell_option
 
-    @property
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
     def raw_daily_history(self):
         return self.history.all().order_by('date').to_dataframe(
             ['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
 
-    def is_in_cache(self) -> bool:
-        if Share.CACHE_DATE != date.today():
-            Share.CACHE_DATE = date.today()
-            Share.HISTORY_CACHE.clear()
-            logger.info("history cache reset!!")
-            return False
-
-        hash_key = (self, Share.get_today(), Share.NORMALIZE_STRATEGY)
-        return hash_key in Share.HISTORY_CACHE and Share.HISTORY_CACHE[hash_key]['time'] == self.last_update
-
-    @property
-    def daily_history(self):
-        hash_key = (self, Share.get_today(), Share.NORMALIZE_STRATEGY)
-
-        if self.is_in_cache():
-            return Share.HISTORY_CACHE[hash_key]['value']
-
-        df = self.raw_daily_history.copy()
-        df = df[df['date'] <= Share.get_today()]
-        if Share.NORMALIZE_STRATEGY == 'scaler':
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def daily_history(self, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
+        assert normalize_strategy in {'scaler', 'linear'}
+        df = self.raw_daily_history().copy()
+        df = df[df['date'] <= Share.get_today_new(day_offset)]
+        if normalize_strategy == 'scaler':
             df['diff'] = df['close'] / df['open'].shift(-1)
             if df.shape[0] > 0:
                 df.loc[df.shape[0] - 1, 'diff'] = 1
@@ -246,46 +239,34 @@ class Share(models.Model):
                 df['close'] -= df['acc_diff']
                 df['open'] -= df['acc_diff']
 
-        Share.HISTORY_CACHE[hash_key] = {'value': df, 'time': self.last_update}
         return df
 
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=24 * 60 * 60))
     def get_first_date_of_history(self):
-        if self.history_size > 0:
-            if self.is_in_cache():
-                return self.day_history(0)['date']
-            else:
-                return self.history.all().filter(date__lte=Share.get_today()).earliest('date').date
+        if self.history_size() > 0:
+            return self.history.all().filter(date__lte=Share.get_today_new()).earliest('date').date
         else:
-            return Share.get_today()
+            return Share.get_today_new()
 
-    def day_history(self, loc):
-        return self.daily_history.iloc[loc]
+    def day_history(self, loc: int, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
+        return self.daily_history(day_offset, normalize_strategy).iloc[loc]
 
-    def history_of_date(self, d):
-        return self.daily_history[self.daily_history['date'] <= d].iloc[-1]
+    def history_of_date(self, d: date, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
+        daily_history = self.daily_history(day_offset, normalize_strategy)
+        return daily_history[daily_history['date'] <= d].iloc[-1]
 
-    @property
-    def last_day_history(self):
-        if self.is_in_cache():
-            return self.day_history(-1)
-        else:
-            item = self.history.all().filter(date__lte=Share.get_today()).latest('date')
-            return item.__dict__
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def last_day_history(self, day_offset: int = DAY_OFFSET_DEFAULT):
+        return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).latest('date').__dict__
 
-    @property
-    def history_size(self):
-        if self.is_in_cache():
-            return self.daily_history.shape[0]
-        else:
-            return self.history.all().filter(date__lte=Share.get_today()).count()
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def history_size(self, day_offset: int = DAY_OFFSET_DEFAULT):
+        return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).count()
 
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
     def get_average_trade_value(self, days: int) -> float:
-        if self.is_in_cache():
-            return self.daily_history[-days:]['value'].mean()
-        else:
-            return mean(
-                self.history.all().filter(date__lte=Share.get_today()).order_by('date')[
-                self.history_size - days:].values_list('value', flat=True))
+        return mean(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
+                    self.history_size() - days:].values_list('value', flat=True))
 
     def __str__(self):
         return self.ticker
