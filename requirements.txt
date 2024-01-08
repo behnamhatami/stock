@@ -1,5 +1,5 @@
-Django==4.2.6
-pandas==2.1.1
+Django==5.0.1
+pandas==2.1.4
 django_pandas==0.6.6
 requests==2.31.0
 django4-cron==0.5.1
@@ -7,12 +7,12 @@ persiantools==3.0.1
 beautifulsoup4==4.12.2
 stockstats==0.6.2
 getuseragent==0.0.7
-matplotlib==3.8.0
-numpy==1.26.1
+matplotlib==3.8.2
+numpy==1.26.3
 python-bidi==0.4.2
 arabic-reshaper==3.0.0
 cycler==0.12.1
-textdistance==4.6.0
-cachetools==5.3.1
+textdistance==4.6.1
+cachetools==5.3.2
 tenacity==8.2.3
 openpyxl==3.1.2
