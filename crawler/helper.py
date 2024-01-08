@@ -2,11 +2,13 @@ import concurrent
 import logging
 import math
 import typing
+from datetime import date
 from io import StringIO
 
 import numpy as np
 import pandas as pd
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 from django.utils import timezone
 from getuseragent import UserAgent
@@ -16,9 +18,12 @@ from tenacity import stop_after_attempt, wait_random_exponential, retry, RetryCa
 
 from crawler.decorators import log_time
 from crawler.models import Share, ShareDailyHistory, ShareGroup
+from crawler.time_helper import convert_integer_to_parts
 
 logger = logging.getLogger(__name__)
 user_agent = UserAgent()
+
+urllib3.disable_warnings()
 
 
 def get_headers(share, referer=None):
@@ -30,6 +35,17 @@ def get_headers(share, referer=None):
         'Connection': 'keep-alive',
         'Referer': referer if referer else f'http://old.tsetmc.com/Loader.aspx?ParTree=151311&i={share.id}',
         'X-Requested-With': 'XMLHttpRequest',
+    }
+
+
+def get_tse_new_site_headers():
+    return {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Origin': 'http://tsetmc.com',
+        'DNT': '1',
+        'Referer': 'http://tsetmc.com/',
+        'User-Agent': user_agent.Random(),
     }
 
 
@@ -91,9 +107,9 @@ def run_jobs(job_title, jobs, max_workers=100, log=True, log_exception_on_failur
                 error += 1
                 if log:
                     if log_exception_on_failure:
-                        logger.exception(f'{job_title}: {future.exception()}')
+                        logger.exception(f'{job_title}: job crashed!', exc_info=future.exception())
                     else:
-                        logger.warning(f'{job_title}: {future.exception()}')
+                        logger.warning(f'{job_title}: job crashed!', exc_info=future.exception())
             else:
                 success += 1
 
@@ -147,71 +163,80 @@ def update_share_groups():
 
 
 def search_share(keyword):
-    response = submit_request('http://old.tsetmc.com/tsev2/data/search.aspx', params=(('skey', keyword),),
-                              headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15'),
-                              retry_on_html_response=True, timeout=25)
+    response = submit_request(f'https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{keyword}',
+                              params=(), headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
 
-    if len(response.text) == 0:
-        return
-
-    # lables = ['ticker', 'description', 'id', '', '', '', 'bazaar type', 'enable', 'bazaar', 'bazaar']
-    df = pd.read_csv(StringIO(response.text), sep=',', lineterminator=';', header=None)
-    df = df.where((pd.notnull(df)), None)
-
+    result = []
     new_list, update_list = [], []
-    for index, row in df.iterrows():
-        id = row[2]
+    for row in response.json()['instrumentSearch']:
+        data = {
+            'id': int(row['insCode']),
+            'ticker': characters.ar_to_fa(str(row['lVal18AFC'])).strip(),
+            'description': characters.ar_to_fa(row['lVal30']).strip(),
+            'bazaar_type': row['flow'],
+            'enable': row['lastDate'],
+        }
         try:
-            share = Share.objects.get(id=id)
+            share = Share.objects.get(id=data['id'])
         except Share.DoesNotExist:
             for share in new_list:
-                if share.id == row[2]:
+                if share.id == data['id']:
                     break
             else:
-                share = Share()
+                share = Share(**data)
 
-        (update_list if share.id else new_list).append(share)
+        if not share.id:
+            new_list.append(share)
+        else:
+            updated: bool = False
+            for key, value in data.items():
+                if getattr(share, key) != value:
+                    print(share, key, getattr(share, key), value)
+                    setattr(share, key, value)
+                    updated: bool = True
 
-        share.ticker = characters.ar_to_fa(str(row[0])).strip()
-        share.description = characters.ar_to_fa(row[1]).strip()
-        share.id = row[2]
-        share.bazaar_type = row[6]
-        share.enable = bool(row[7])
-        share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
+            parsed_data = share.parse_data()
+            if (share.strike_date, share.option_strike_price, share.base_share) != parsed_data:
+                share.strike_date, share.option_strike_price, share.base_share = parsed_data
+                updated = True
+
+            if updated:
+                update_list.append(share)
 
     Share.objects.bulk_create(new_list, batch_size=100)
     Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
                                             'strike_date', 'base_share'], batch_size=100)
-    if new_list:
+    if new_list or update_list:
         logger.info(f"update share list, {len(new_list)} added ({new_list}), {len(update_list)} updated.")
 
 
 def update_share_history_item(share, last_update: bool = True, days=None, batch_size=100):
     if days is None:
-        days = (timezone.now() - share.last_update).days + 1 if share.last_update else 999999
+        days = (timezone.now() - share.last_update).days + 1 if share.last_update else 0
 
-    params = (
-        ('i', share.id),
-        ('Top', days),
-        ('A', '0'),
-    )
-    response = submit_request('http://old.tsetmc.com/tsev2/data/InstTradeHistory.aspx', params=params,
-                              headers=get_headers(share), retry_on_html_response=True, timeout=25)
-
-    share.last_update = timezone.now()
-
-    labels = ['date', 'high', 'low', 'close', 'last', 'first', 'open', 'value', 'volume', 'count']
-    df = pd.read_csv(StringIO(response.text), sep='@', lineterminator=';', names=labels, parse_dates=['date'])
-    df = df.where((pd.notnull(df)), None)
+    response = submit_request(f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceDailyList/{share.id}/{days}',
+                              params=(), headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
 
     share_histories = []
-    for index, row in df.iterrows():
-        data = row.to_dict()
-        data['share'] = share
+    for row in response.json()['closingPriceDaily']:
+        data = {'share': share,
+                'date': date(*convert_integer_to_parts(row['dEven'])),
+                'high': row['priceMax'],
+                'low': row['priceMin'],
+                'close': row['pClosing'],
+                'last': row['priceYesterday'] + row['priceChange'],
+                'first': row['priceFirst'],
+                'open': row['priceYesterday'],
+                'value': row['qTotCap'],
+                'volume': row['qTotTran5J'],
+                'count': row['zTotTran']}
+
         if ShareDailyHistory.objects.filter(share=share, date=data['date']).exists():
             break
 
         share_histories.append(ShareDailyHistory(**data))
+
+    share.last_update = timezone.now()
 
     ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
     if last_update:
