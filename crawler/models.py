@@ -1,10 +1,9 @@
-import json
 import logging
 import re
 from datetime import timedelta, date
+from statistics import mean
 from string import digits
 
-from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils.functional import cached_property
 from django_pandas.managers import DataFrameManager
@@ -12,42 +11,6 @@ from django_pandas.managers import DataFrameManager
 from crawler.time_helper import convert_date_string_to_date
 
 logger = logging.getLogger(__name__)
-
-
-class JSONField(models.TextField):
-    """
-    JSONField es un campo TextField que serializa/deserializa objetos JSON.
-    Django snippet #1478
-
-    Ejemplo:
-        class Page(models.Model):
-            data = JSONField(blank=True, null=True)
-
-        page = Page.objects.get(pk=5)
-        page.data = {'title': 'test', 'type': 3}
-        page.save()
-    """
-
-    def to_python(self, value):
-        if value == "":
-            return None
-
-        try:
-            if isinstance(value, str):
-                return json.loads(value)
-        except ValueError:
-            pass
-        return value
-
-    def from_db_value(self, value, *args):
-        return self.to_python(value)
-
-    def get_db_prep_save(self, value, *args, **kwargs):
-        if value == "":
-            return None
-        if isinstance(value, dict):
-            value = json.dumps(value, cls=DjangoJSONEncoder)
-        return value
 
 
 class ShareGroup(models.Model):
@@ -237,15 +200,21 @@ class Share(models.Model):
         return self.history.all().order_by('date').to_dataframe(
             ['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
 
-    @property
-    def daily_history(self):
+    def is_in_cache(self) -> bool:
         if Share.CACHE_DATE != date.today():
             Share.CACHE_DATE = date.today()
             Share.HISTORY_CACHE.clear()
             logger.info("history cache reset!!")
+            return False
 
         hash_key = (self, Share.get_today(), Share.NORMALIZE_STRATEGY)
-        if hash_key in Share.HISTORY_CACHE and Share.HISTORY_CACHE[hash_key]['time'] == self.last_update:
+        return hash_key in Share.HISTORY_CACHE and Share.HISTORY_CACHE[hash_key]['time'] == self.last_update
+
+    @property
+    def daily_history(self):
+        hash_key = (self, Share.get_today(), Share.NORMALIZE_STRATEGY)
+
+        if self.is_in_cache():
             return Share.HISTORY_CACHE[hash_key]['value']
 
         df = self.raw_daily_history.copy()
@@ -281,7 +250,13 @@ class Share(models.Model):
         return df
 
     def get_first_date_of_history(self):
-        return self.day_history(0)['date'] if self.history_size > 0 else Share.get_today()
+        if self.history_size > 0:
+            if self.is_in_cache():
+                return self.day_history(0)['date']
+            else:
+                return self.history.all().filter(date__lte=Share.get_today()).earliest('date').date
+        else:
+            return Share.get_today()
 
     def day_history(self, loc):
         return self.daily_history.iloc[loc]
@@ -291,14 +266,26 @@ class Share(models.Model):
 
     @property
     def last_day_history(self):
-        return self.day_history(-1)
+        if self.is_in_cache():
+            return self.day_history(-1)
+        else:
+            item = self.history.all().filter(date__lte=Share.get_today()).latest('date')
+            return item.__dict__
 
     @property
     def history_size(self):
-        return self.daily_history.shape[0]
+        if self.is_in_cache():
+            return self.daily_history.shape[0]
+        else:
+            return self.history.all().filter(date__lte=Share.get_today()).count()
 
     def get_average_trade_value(self, days: int) -> float:
-        return self.daily_history[-days:]['value'].mean()
+        if self.is_in_cache():
+            return self.daily_history[-days:]['value'].mean()
+        else:
+            return mean(
+                self.history.all().filter(date__lte=Share.get_today()).order_by('date')[
+                self.history_size - days:].values_list('value', flat=True))
 
     def __str__(self):
         return self.ticker
