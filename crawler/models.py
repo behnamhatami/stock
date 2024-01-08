@@ -258,7 +258,7 @@ class Share(models.Model):
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
     def get_average_trade_value(self, days: int) -> float:
         return mean(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
-                    self.history_size() - days:].values_list('value', flat=True))
+                    max(self.history_size() - days, 0):].values_list('value', flat=True))
 
     def __str__(self):
         return self.ticker
