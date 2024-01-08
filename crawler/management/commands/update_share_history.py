@@ -15,6 +15,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         history_count = ShareDailyHistory.objects.count()
-        jobs = [partial(update_share_history_item, share) for share in Share.objects.all()]
+        share_list = list(Share.objects.all())
+        jobs = [partial(update_share_history_item, share, last_update=False) for share in share_list]
         run_jobs("Update Share History", jobs, log=True, log_exception_on_failure=False)
+        Share.objects.bulk_update(share_list, ['last_update'], batch_size=100)
+
         logger.info(f"Share history updated. {ShareDailyHistory.objects.count() - history_count} added.")

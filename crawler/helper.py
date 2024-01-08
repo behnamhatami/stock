@@ -186,7 +186,7 @@ def search_share(keyword):
         logger.info(f"update share list, {len(new_list)} added ({new_list}), {len(update_list)} updated.")
 
 
-def update_share_history_item(share, days=None, batch_size=100):
+def update_share_history_item(share, last_update: bool = True, days=None, batch_size=100):
     if days is None:
         days = (timezone.now() - share.last_update).days + 1 if share.last_update else 999999
 
@@ -214,8 +214,9 @@ def update_share_history_item(share, days=None, batch_size=100):
         share_histories.append(ShareDailyHistory(**data))
 
     ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
+    if last_update:
+        share.save()
 
-    share.save()
     if share_histories:
         logger.info(f"history of {share.ticker} in {len(share_histories)} days added.")
 
