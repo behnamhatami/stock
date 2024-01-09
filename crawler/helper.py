@@ -231,6 +231,9 @@ def update_share_history_item(share, last_update: bool = True, days=None, batch_
                 'volume': row['qTotTran5J'],
                 'count': row['zTotTran']}
 
+        if data['count'] == 0:
+            continue
+
         if ShareDailyHistory.objects.filter(share=share, date=data['date']).exists():
             break
 
