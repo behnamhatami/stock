@@ -7,7 +7,8 @@ class VolumeAnalyzer(Analyzer):
         self.threshold = threshold
 
     def analyze(self, share: Share, day_offset: int):
-        if share.history_size(day_offset) < self.threshold + 1:
+        if share.history_size(day_offset) < self.threshold + 1 or (
+                share.base_share and not (share.is_sell_option or share.is_buy_option or share.is_rights_issue)):
             return None
 
         last_month_volume = share.daily_history(day_offset)[-self.threshold - 1: -1]['volume'].mean()

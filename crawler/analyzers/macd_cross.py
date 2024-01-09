@@ -15,7 +15,7 @@ class MACDCrossAnalyzer(Analyzer):
         StockDataFrame.MACD_EMA_LONG = self.slow_period
         StockDataFrame.MACD_EMA_SIGNAL = self.signal_period
 
-        if share.history_size(day_offset) < 2:
+        if share.history_size(day_offset) < 2 or share.base_share:
             return
 
         daily_history = StockDataFrame.retype(share.daily_history(day_offset).copy())
