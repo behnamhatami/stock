@@ -53,5 +53,5 @@ class Command(BaseCommand):
             html_out = template.render({'date': Share.get_today_new(day_offset),
                                         'daily_report_dataframe': df.to_html(escape=False)})
 
-            with open(settings.BASE_DIR + "/report.html", 'w') as f:
+            with open(settings.BASE_DIR + "/data/report.html", 'w') as f:
                 f.write(html_out)
