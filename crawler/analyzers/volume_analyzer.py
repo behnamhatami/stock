@@ -13,5 +13,5 @@ class VolumeAnalyzer(Analyzer):
         last_month_volume = share.daily_history(day_offset)[-self.threshold - 1: -1]['volume'].mean()
         last_day_volume = share.last_day_history(day_offset)['volume']
 
-        if last_month_volume * 2 < last_day_volume:
+        if last_month_volume * 2 < last_day_volume and share.last_day_history(day_offset)['value'] > 1_000_000_000:
             return {"high volume": {"last_month_volume": last_month_volume, "last_day_volume": last_day_volume}}
