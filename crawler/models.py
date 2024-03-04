@@ -138,7 +138,7 @@ class Share(models.Model):
 
             elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
                 return convert_date_string_to_date(re.findall(r'\d+$', self.description)[0]), None, None
-            elif self.is_rights_issue:
+            elif self.is_rights_issue and self.extra_data:
                 if Share.objects.filter(enable=True, ticker=self.ticker[:-1]).exists():
                     candidates = Share.objects.filter(enable=True, ticker=self.ticker[:-1])
                 else:
@@ -155,7 +155,7 @@ class Share(models.Model):
                                             s.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']))
 
                 return None, None, candidates[0]
-            elif self.ticker[-1].isdigit():
+            elif self.ticker[-1].isdigit() and self.extra_data:
                 candidates = Share.objects.filter(enable=True, ticker=self.ticker.rstrip(digits))
                 candidates = [candidate for candidate in candidates if candidate.extra_data and self.extra_data and
                               candidate.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']]
