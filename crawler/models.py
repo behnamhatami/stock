@@ -194,6 +194,10 @@ class Share(models.Model):
     def is_special(self):
         return self.is_rights_issue or self.is_buy_option or self.is_sell_option
 
+    @cached_property
+    def is_gold_coin(self):
+        return self.ticker.startswith('سکه') and self.extra_data['کد تابلو'] == '4' and self.group.id == 56
+
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
     def raw_daily_history(self):
         return self.history.all().order_by('date').to_dataframe(
