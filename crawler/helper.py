@@ -138,26 +138,22 @@ def update_share_list_by_group(group):
 
 @log_time
 def update_share_groups():
-    response = requests.get('http://old.tsetmc.com/Loader.aspx?ParTree=111C1213')
+    response = requests.get('https://cdn.tsetmc.com/api/StaticData/GetStaticData', headers=get_tse_new_site_headers())
+    response.raise_for_status()
 
-    if response.status_code != 200:
-        raise Exception(f"Http Error: {response.status_code}")
+    for item in response.json()['staticData']:
+        if item['type'] == 'IndustrialGroup':
+            code: int = item['code']
+            name: str = characters.ar_to_fa(item['name']).strip()
 
-    for group_data in BeautifulSoup(response.text, features='html.parser').body.select('tr[id]'):
-        id = group_data.select('td')[0].contents[0].strip()
-        name = group_data.select('td')[1].contents[0].strip()
+            try:
+                group = ShareGroup.objects.get(id=code)
+            except ShareGroup.DoesNotExist:
+                group = ShareGroup()
 
-        if not id.isdigit():
-            continue
-
-        try:
-            group = ShareGroup.objects.get(id=id)
-        except ShareGroup.DoesNotExist:
-            group = ShareGroup()
-
-        group.id = int(id)
-        group.name = characters.ar_to_fa(name)
-        group.save()
+            group.id = int(code)
+            group.name = name
+            group.save()
 
     logger.info(f"Share group info updated. number of groups: {ShareGroup.objects.count()}")
 
@@ -191,7 +187,6 @@ def search_share(keyword):
             updated: bool = False
             for key, value in data.items():
                 if getattr(share, key) != value:
-                    print(share, key, getattr(share, key), value)
                     setattr(share, key, value)
                     updated: bool = True
 
