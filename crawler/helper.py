@@ -162,7 +162,6 @@ def search_share(keyword):
     response = submit_request(f'https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{keyword}',
                               params=(), headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
 
-    result = []
     new_list, update_list = [], []
     for row in response.json()['instrumentSearch']:
         data = {
@@ -174,16 +173,6 @@ def search_share(keyword):
         }
         try:
             share = Share.objects.get(id=data['id'])
-        except Share.DoesNotExist:
-            for share in new_list:
-                if share.id == data['id']:
-                    break
-            else:
-                share = Share(**data)
-
-        if not share.id:
-            new_list.append(share)
-        else:
             updated: bool = False
             for key, value in data.items():
                 if getattr(share, key) != value:
@@ -197,6 +186,12 @@ def search_share(keyword):
 
             if updated:
                 update_list.append(share)
+        except Share.DoesNotExist:
+            for share in new_list:
+                if share.id == data['id']:
+                    break
+            else:
+                new_list.append(Share(**data))
 
     Share.objects.bulk_create(new_list, batch_size=100)
     Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
