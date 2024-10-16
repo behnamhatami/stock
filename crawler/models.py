@@ -117,7 +117,7 @@ class Share(models.Model):
                     'امید': 'وامید',
                     'نارنج': 'نارنج اهرم',
                     'فارماکیان': 'فارما کیان',
-                }ان
+                }
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
                     ticker = dictionary.get(ticker, ticker)
                     candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
