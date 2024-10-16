@@ -96,7 +96,7 @@ def submit_request(url, params, headers, retry_on_empty_response=False, retry_on
 
 
 @log_time
-def run_jobs(job_title, jobs, max_workers=100, log=True, log_exception_on_failure=True):
+def run_jobs(job_title, jobs, max_workers=10, log=True, log_exception_on_failure=True):
     number_of_buckets = max(min(20, len(jobs) // 10), 2)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(job) for job in jobs]
@@ -202,7 +202,7 @@ def search_share(keyword):
     Share.objects.bulk_update(update_list, ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
                                             'strike_date', 'base_share'], batch_size=100)
     if new_list or update_list:
-        logger.info(f"update share list, {len(new_list)} added ({new_list}), {len(update_list)} updated.")
+        logger.info(f"update share list {keyword}, {len(new_list)} added ({new_list}), {len(update_list)} updated.")
 
 
 def update_share_history_item(share, last_update: bool = True, days=None, batch_size=100):
