@@ -117,6 +117,7 @@ class Share(models.Model):
                     'امید': 'وامید',
                     'نارنج': 'نارنج اهرم',
                     'فارماکیان': 'فارما کیان',
+                    'اگاس': 'آگاس',
                 }
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
                     ticker = dictionary.get(ticker, ticker)
