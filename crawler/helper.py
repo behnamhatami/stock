@@ -316,6 +316,9 @@ def get_share_detailed_info(share):
 
         data[key] = value
 
+    if not data or 'کد گروه صنعت' not in data or 'کد 12 رقمی نماد' not in data:
+        return
+
     share.extra_data = data
     share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
     share.isin = data['کد 12 رقمی نماد']

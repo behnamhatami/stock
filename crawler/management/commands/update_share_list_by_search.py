@@ -30,7 +30,8 @@ class Command(BaseCommand):
 
         logger.info(f"search for {len(tickers)} ticker name, {len(two_chars)} two and {len(three_chars)} three chars")
 
-        jobs = [partial(search_share, name) for name in list(tickers | numbered_tickers) + two_chars + three_chars]
+        jobs = [partial(search_share, name) for name in
+                sorted(list(tickers | numbered_tickers) + two_chars + three_chars)]
         run_jobs("Update Share List by Search", jobs, log=True, log_exception_on_failure=False)
         jobs = [partial(get_share_detailed_info, share) for share in Share.objects.filter(extra_data__isnull=True)]
         run_jobs("Update Share Detail Info", jobs, log=True, log_exception_on_failure=False)
