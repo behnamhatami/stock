@@ -106,6 +106,8 @@ class Share(models.Model):
                         logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
 
+                if len(parts[2]) == 4:
+                    parts[2] = parts[2] + '01'
                 dt = convert_date_string_to_date(parts[2])
                 ticker_parts = parts[0].replace('.', ' ').strip().split()
 
@@ -189,11 +191,11 @@ class Share(models.Model):
 
     @cached_property
     def is_buy_option(self):
-        return self.ticker[0] == 'ض' and 'اختیار' in self.description
+        return self.ticker[0] in ['ض', 'ظ'] and 'اختیار' in self.description
 
     @cached_property
     def is_sell_option(self):
-        return self.ticker[0] == 'ط' and 'اختیار' in self.description
+        return self.ticker[0] == ['ط', 'ه'] and 'اختیار' in self.description
 
     @cached_property
     def is_bond(self):
