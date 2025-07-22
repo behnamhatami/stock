@@ -10,7 +10,7 @@ from crawler.models import Share
 
 class GoodPriceRightIssueAnalyzer(Analyzer):
     def analyze(self, share: Share, day_offset: int):
-        if share.is_rights_issue and share.base_share:
+        if share.is_rights_issue and share.base_share and share.base_share.history_size(day_offset) > 0:
             # df = pd.merge(share.daily_history, main_share.daily_history, left_on='Date', right_on='Date', how='inner')
             # df['diff'] = df['Close_y'] / (df['Close_x'] + 1000)
             # df = df[df['Date'] >= Share.get_today() - timedelta(days=365)]

@@ -43,4 +43,4 @@ def convert_time_string_to_time(string):
 
 def is_active_hour():
     now = timezone.localtime(timezone.now())
-    return now.isoweekday() not in [4, 5] and 15 >= now.hour >= 8
+    return now.isoweekday() not in [4, 5] and 17 >= now.hour >= 8

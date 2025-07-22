@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import timedelta, date
+from enum import Enum
 from statistics import mean
 from string import digits
 
@@ -12,6 +13,12 @@ from django_pandas.managers import DataFrameManager
 from crawler.time_helper import convert_date_string_to_date
 
 logger = logging.getLogger(__name__)
+
+
+class Contract(Enum):
+    GOLD_COIN: str = 'CD1GOC0001'
+    GOLD: str = 'CD1GOB0001'
+    SILVER: str = 'CD1SIB0001'
 
 
 class ShareGroup(models.Model):
@@ -246,6 +253,9 @@ class Share(models.Model):
         else:
             return Share.get_today_new()
 
+    def get_sort_key(self) -> tuple:
+        return self.get_first_date_of_history(), self.ticker
+
     def day_history(self, loc: int, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
         return self.daily_history(day_offset, normalize_strategy).iloc[loc]
 
@@ -262,12 +272,13 @@ class Share(models.Model):
         return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).count()
 
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def get_average_trade_value(self, days: int) -> float:
+    def get_average_trade_value(self, days: int) -> tuple[float, float]:
         if self.history_size() == 0:
-            return 0
+            return 0, 0
 
-        return mean(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
-                    max(self.history_size() - days, 0):].values_list('value', flat=True))
+        histories = list(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
+                         -                         max(self.history_size() - days, 0):].values_list('value', flat=True))
+        return mean(histories), median(histories)
 
     def __str__(self):
         return self.ticker

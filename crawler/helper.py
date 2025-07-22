@@ -241,7 +241,7 @@ def update_share_history_item(share, last_update: bool = True, days=None, batch_
 
 @log_time
 def update_share_list(batch_size=100):
-    text = get_watch_list()
+    text = get_watch_list(h=0, r=0)
 
     df = pd.read_csv(StringIO(text.split("@")[2]), sep=',', lineterminator=';', header=None)
     df = df.replace({np.nan: None})
@@ -253,19 +253,21 @@ def update_share_list(batch_size=100):
         except Share.DoesNotExist:
             share = Share()
 
-        (update_list if share.id else new_list).append(share)
-
-        share.enable = True
-        share.id = row[0]
-        share.ticker = characters.ar_to_fa(str(row[2])).strip()
-        share.description = characters.ar_to_fa(row[3]).strip()
-        share.eps = row[14] if row[14] and row[14] != 'nan' and not math.isnan(row[14]) else None
-        share.base_volume = row[15]
-        share.bazaar_type = row[17]
-        share.group = ShareGroup.objects.get(id=row[18])
-        share.total_count = row[21]
-        share.bazaar_group = row[22]
-        share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
+        try:
+            share.enable = True
+            share.ticker = characters.ar_to_fa(str(row[2])).strip()
+            share.description = characters.ar_to_fa(row[3]).strip()
+            share.eps = row[14] if row[14] and row[14] != 'nan' and not math.isnan(row[14]) else None
+            share.base_volume = row[15]
+            share.bazaar_type = row[17]
+            share.group = ShareGroup.objects.get(id=row[18])
+            share.total_count = row[21]
+            share.bazaar_group = row[22]
+            share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
+            (update_list if share.id else new_list).append(share)
+            share.id = row[0]
+        except:
+            logger.warning(f'{share.ticker} parse share data failed! {row}!!')
 
     Share.objects.bulk_create(new_list, batch_size=batch_size)
     Share.objects.bulk_update(update_list,
@@ -275,10 +277,10 @@ def update_share_list(batch_size=100):
     logger.info(f"update share list, {len(new_list)} ({new_list}) added, {len(update_list)} updated.")
 
 
-def get_watch_list():
+def get_watch_list(h='0', r='0'):
     response = submit_request('http://old.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
                               headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15131F'),
-                              params=(('h', '0'), ('r', '0')), retry_on_empty_response=True,
+                              params=(('h', h), ('r', r)), retry_on_empty_response=True,
                               retry_on_html_response=True, timeout=10)
 
     '''
@@ -314,7 +316,11 @@ def get_share_detailed_info(share):
     if not data or 'کد گروه صنعت' not in data or 'کد 12 رقمی نماد' not in data:
         return
 
-    share.extra_data = data
-    share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
-    share.isin = data['کد 12 رقمی نماد']
-    share.save()
+    try:
+        share.extra_data = data
+        share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
+        share.isin = data['کد 12 رقمی نماد']
+        share.save()
+    except:
+        logger.exception(f'{share.ticker} update share detailed info failed {data}!!')
+        raise
