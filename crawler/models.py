@@ -2,7 +2,7 @@ import logging
 import re
 from datetime import timedelta, date
 from enum import Enum
-from statistics import mean
+from statistics import mean, median
 from string import digits
 
 from cachetools import cached, TTLCache
@@ -277,7 +277,7 @@ class Share(models.Model):
             return 0, 0
 
         histories = list(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
-                         -                         max(self.history_size() - days, 0):].values_list('value', flat=True))
+                         max(self.history_size() - days, 0):].values_list('value', flat=True))
         return mean(histories), median(histories)
 
     def __str__(self):
