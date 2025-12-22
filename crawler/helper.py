@@ -181,7 +181,8 @@ def update_share_identity(share: Share):
                 return
 
         share.identity = response
-        assert share.group.id == int(share.identity['sector']['cSecVal'].strip())
+        if share.group:
+            assert share.goup.id == int(share.identity['sector']['cSecVal'].strip())
         assert share.isin == share.identity['instrumentID']
         share.save()
     except:
