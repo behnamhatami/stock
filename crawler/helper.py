@@ -171,8 +171,11 @@ def update_share_identity(share: Share):
         'instrumentIdentity']
 
     try:
-        if share.identity and share.identity != response:
-            logger.warning(f'{share.ticker}: detailed info changed from {share.identity} to {response}')
+        if share.identity:
+            if share.identity != response:
+                logger.warning(f'{share.ticker}: detailed info changed from {share.identity} to {response}')
+            else:
+                return
 
         share.identity = response
         assert share.group.id == int(share.identity['sector']['cSecVal'].strip())
@@ -344,8 +347,11 @@ def get_share_detailed_info(share):
         return
 
     try:
-        if share.extra_data and share.extra_data != data:
-            logger.warning(f'{share.ticker}: detailed info changed from {share.extra_data} to {data}')
+        if share.extra_data:
+            if share.extra_data != data:
+                logger.warning(f'{share.ticker}: detailed info changed from {share.extra_data} to {data}')
+            else:
+                return
 
         share.extra_data = data
         share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
