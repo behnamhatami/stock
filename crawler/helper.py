@@ -164,6 +164,25 @@ def update_share_groups():
     logger.info(f"Share group info updated. number of groups: {ShareGroup.objects.count()}")
 
 
+def update_share_identity(share: Share):
+    response = submit_request(method='get',
+                              url=f'https://cdn.tsetmc.com/api/Instrument/GetInstrumentIdentity/{share.id}',
+                              headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25).json()[
+        'instrumentIdentity']
+
+    try:
+        if share.identity and share.identity != response:
+            logger.warning(f'{share.ticker}: detailed info changed from {share.identity} to {response}')
+
+        share.identity = response
+        assert share.group.id == int(share.identity['sector']['cSecVal'].strip())
+        assert share.isin == share.identity['instrumentID']
+        share.save()
+    except:
+        logger.exception(f'{share.ticker} update share detailed info failed {response}!!')
+        raise
+
+
 def search_share(keyword):
     response = submit_request(method='get',
                               url=f'https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{keyword}',
@@ -325,6 +344,9 @@ def get_share_detailed_info(share):
         return
 
     try:
+        if share.extra_data and share.extra_data != data:
+            logger.warning(f'{share.ticker}: detailed info changed from {share.extra_data} to {data}')
+
         share.extra_data = data
         share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
         share.isin = data['کد 12 رقمی نماد']

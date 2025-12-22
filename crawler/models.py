@@ -185,6 +185,8 @@ class Share(models.Model, HistoryHandler):
     eps = models.IntegerField(null=True, blank=False)
     last_update = models.DateTimeField(null=True)
     extra_data = models.JSONField(null=True, blank=False)
+    identity = models.JSONField(null=True, blank=False)
+
 
     def compute_value(self, count, price):
         # logger.info(f'{self.group.id}, {count}, {price}')

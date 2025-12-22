@@ -55,6 +55,7 @@ CRON_CLASSES = [
     'crawler.crons.update_share_history_cron_job.UpdateShareHistoryCronJob',
     'crawler.crons.update_share_list_by_search_cron_job.UpdateShareListBySearchCronJob',
     'crawler.crons.update_share_list_cron_job.UpdateShareListCronJob',
+    'crawler.crons.update_share_info_cron_job.UpdateShareInfoCronJob',
     'crawler.crons.daily_analyzer_cron_job.DailyAnalyzerCronJob',
     'django_cron.cron.FailedRunsNotificationCronJob',
 ]

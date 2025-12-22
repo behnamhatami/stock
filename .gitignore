@@ -107,6 +107,8 @@ venv.bak/
 
 .idea/
 stock.sql
+stock.sql-shm
+stock.sql-wal
 report.html
 /data/
 /static/
