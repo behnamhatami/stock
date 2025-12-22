@@ -1,4 +1,5 @@
 import concurrent
+import json
 import logging
 import math
 import typing
@@ -171,6 +172,8 @@ def update_share_identity(share: Share):
         'instrumentIdentity']
 
     try:
+        response = json.loads(characters.ar_to_fa(json.dumps(response)))
+
         if share.identity:
             if share.identity != response:
                 logger.warning(f'{share.ticker}: detailed info changed from {share.identity} to {response}')
@@ -347,6 +350,7 @@ def get_share_detailed_info(share):
         return
 
     try:
+        data = json.loads(characters.ar_to_fa(json.dumps(data)))
         if share.extra_data:
             if share.extra_data != data:
                 logger.warning(f'{share.ticker}: detailed info changed from {share.extra_data} to {data}')
