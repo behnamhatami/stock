@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class UpdateShareHistoryCronJob(CronJobBase):
-    EVERY_MINS = 4 * 60
-    RETRY_AFTER_FAILURE_MINS = 5
+    RUN_AT_TIMES = ['18:00', '22:00', '02:00', '06:00', '08:00']
+    RETRY_AFTER_FAILURE_MINS = 30
 
-    schedule = Schedule(run_every_mins=EVERY_MINS, retry_after_failure_mins=RETRY_AFTER_FAILURE_MINS)
+    schedule = Schedule(run_at_times=RUN_AT_TIMES, retry_after_failure_mins=RETRY_AFTER_FAILURE_MINS)
     code = 'crawler.daily_update_share_history_cron_job'  # a unique code
 
     def do(self):

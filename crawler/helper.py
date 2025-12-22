@@ -2,7 +2,8 @@ import concurrent
 import logging
 import math
 import typing
-from datetime import date
+from asyncio import CancelledError
+from datetime import datetime, date, timedelta
 from io import StringIO
 
 import numpy as np
@@ -11,13 +12,14 @@ import requests
 import urllib3
 from bs4 import BeautifulSoup
 from django.utils import timezone
+from django.utils.timezone import make_aware
 from getuseragent import UserAgent
 from persiantools import characters
-from tenacity import _utils
+from tenacity import _utils, retry_if_not_exception_type
 from tenacity import stop_after_attempt, wait_random_exponential, retry, RetryCallState
 
 from crawler.decorators import log_time
-from crawler.models import Share, ShareDailyHistory, ShareGroup
+from crawler.models import Share, DailyHistory, ShareGroup, Contract
 from crawler.time_helper import convert_integer_to_parts
 
 logger = logging.getLogger(__name__)
@@ -79,9 +81,13 @@ def after_log(
 
 
 @retry(reraise=True, stop=stop_after_attempt(6), wait=wait_random_exponential(multiplier=1, max=60),
-       after=after_log(logger, logging.DEBUG))
-def submit_request(url, params, headers, retry_on_empty_response=False, retry_on_html_response=False, timeout=5):
-    response = requests.get(url, params=params, headers=headers, timeout=timeout, verify=False)
+       after=after_log(logger, logging.DEBUG),
+       retry=retry_if_not_exception_type(CancelledError) & retry_if_not_exception_type(KeyboardInterrupt))
+def submit_request(method: str, url: str, params: tuple = tuple(), headers: dict | None = None,
+                   data: dict | None = None, retry_on_empty_response: bool = False,
+                   retry_on_html_response: bool = False, timeout: int = 5):
+    response = getattr(requests, method.lower())(url, params=params, headers=headers, json=data, timeout=timeout,
+                                                 verify=False)
 
     if response.status_code != 200:
         raise Exception(f"Http Error: {response.status_code}, {url.split('/')[-1]}, {params}")
@@ -159,8 +165,9 @@ def update_share_groups():
 
 
 def search_share(keyword):
-    response = submit_request(f'https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{keyword}',
-                              params=(), headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
+    response = submit_request(method='get',
+                              url=f'https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{keyword}',
+                              headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
 
     new_list, update_list = [], []
     for row in response.json()['instrumentSearch']:
@@ -204,8 +211,9 @@ def update_share_history_item(share, last_update: bool = True, days=None, batch_
     if days is None:
         days = (timezone.now() - share.last_update).days + 1 if share.last_update else 0
 
-    response = submit_request(f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceDailyList/{share.id}/{days}',
-                              params=(), headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
+    response = submit_request(method='get',
+                              url=f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceDailyList/{share.id}/{days}',
+                              headers=get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
 
     share_histories = []
     for row in response.json()['closingPriceDaily']:
@@ -224,14 +232,14 @@ def update_share_history_item(share, last_update: bool = True, days=None, batch_
         if data['count'] == 0:
             continue
 
-        if ShareDailyHistory.objects.filter(share=share, date=data['date']).exists():
+        if DailyHistory.objects.filter(share=share, date=data['date']).exists():
             break
 
-        share_histories.append(ShareDailyHistory(**data))
+        share_histories.append(DailyHistory(**data))
 
     share.last_update = timezone.now()
 
-    ShareDailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
+    DailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
     if last_update:
         share.save()
 
@@ -278,11 +286,11 @@ def update_share_list(batch_size=100):
 
 
 def get_watch_list(h='0', r='0'):
-    response = submit_request('http://old.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
+    response = submit_request(method='get',
+                              url='http://old.tsetmc.com/tsev2/data/MarketWatchInit.aspx',
                               headers=get_headers(None, 'http://old.tsetmc.com/Loader.aspx?ParTree=15131F'),
                               params=(('h', h), ('r', r)), retry_on_empty_response=True,
                               retry_on_html_response=True, timeout=10)
-
     '''
         separated with @ text
         part 0: 
@@ -324,3 +332,82 @@ def get_share_detailed_info(share):
     except:
         logger.exception(f'{share.ticker} update share detailed info failed {data}!!')
         raise
+
+
+def update_contract_list(batch_size: int = 100):
+    live_response = submit_request(method='get',
+                                   url='https://dataapi.ime.co.ir/api/CDC/CDCLiveMarket',
+                                   headers={'User-Agent': user_agent.Random()}).json()
+    new_list, update_list = [], []
+
+    for row in live_response:
+        try:
+            contract = Contract.objects.get(id=row['ContractID'])
+        except Contract.DoesNotExist:
+            contract = Contract()
+
+        contract.code = row['ContractCode']
+        contract.description = row['ContractDescription']
+        contract.size = row['ContractSize']
+        contract.commodity_id = row['CommodityID']
+        contract.commodity_name = row['CommodityName']
+
+        (update_list if contract.id else new_list).append(contract)
+        contract.id = row['ContractID']
+
+    Contract.objects.bulk_create(new_list, batch_size=batch_size)
+    Contract.objects.bulk_update(update_list,
+                                 ['code', 'description', 'size', 'commodity_id', 'commodity_name'],
+                                 batch_size=100)
+    logger.info(f"update contract list, {len(new_list)} ({new_list}) added, {len(update_list)} updated.")
+
+
+def update_contract_history_item(contract, days: int | None = None, batch_size: int = 100):
+    if days is None:
+        days = (date.today() - contract.last_day_history()['date']).days - 1 if contract.history_size() > 0 else 200000
+
+    contract_histories = []
+    for i in range(days // 90 + 1):
+        from_date = date.today() - timedelta(days=min(days, (i + 1) * 90 - 1))
+        to_date = min(date.today(), from_date + timedelta(days=90 - 1))
+        history_response = submit_request(method='post',
+                                          url='https://dataapi.ime.co.ir/api/CDC/CDCTrades',
+                                          data={"fromDate": str(from_date),
+                                                "toDate": str(to_date),
+                                                "pageNumber": 1,
+                                                "pageSize": 90,
+                                                "marketId": 22,
+                                                "customFilter": str(contract.commodity_id)},
+                                          headers={'User-Agent': user_agent.Random()},
+                                          timeout=30).json()
+
+        if not history_response['Data']:
+            if contract_histories:
+                break
+
+        for row in history_response['Data']:
+            data = {'contract': contract,
+                    'date': make_aware(datetime.fromisoformat(row['DT'])).date(),
+                    'high': row['MaxPrice'],
+                    'low': row['MinPrice'],
+                    'close': row['TodaySettlementPrice'],
+                    'last': row['LastPrice'],
+                    'first': row['FirstPrice'],
+                    'open': row['LastSettlementPrice'],
+                    'value': row['TradesValue'],
+                    'volume': row['TradesVolume'],
+                    'count': row['C_Buy'] + row['C_Sell'],
+                    }
+
+            if data['count'] == 0:
+                continue
+
+            if DailyHistory.objects.filter(contract=contract, date=data['date']).exists():
+                break
+
+            contract_histories.append(DailyHistory(**data))
+
+    DailyHistory.objects.bulk_create(reversed(contract_histories), batch_size=batch_size)
+
+    if contract_histories:
+        logger.info(f"history of {contract.code} in {len(contract_histories)} days added.")

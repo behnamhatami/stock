@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Share, ShareDailyHistory, ShareGroup
+from .models import Share, DailyHistory, ShareGroup, Contract
+
+
+@admin.register(Contract)
+class ContractAdmin(admin.ModelAdmin):
+    list_display = ('code', 'description', 'commodity_name')
+    readonly_fields = ('id', 'code', 'description', 'size', 'commodity_id', 'commodity_name')
+    search_fields = ('code', 'description', 'commodity_name')
 
 
 @admin.register(Share)
@@ -11,11 +18,11 @@ class ShareAdmin(admin.ModelAdmin):
     search_fields = ('ticker', 'description')
 
 
-@admin.register(ShareDailyHistory)
+@admin.register(DailyHistory)
 class ShareDailyHistoryAdmin(admin.ModelAdmin):
-    list_display = ('share', 'date', 'close', 'volume', 'count', 'value')
+    list_display = ('asset', 'date', 'close', 'volume', 'count', 'value')
     list_filter = ('date',)
-    search_fields = ('share__ticker', 'share__description')
+    search_fields = ('share__ticker', 'contract__code', 'share__description', 'contract__description')
 
 
 @admin.register(ShareGroup)

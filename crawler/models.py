@@ -1,24 +1,20 @@
 import logging
 import re
 from datetime import timedelta, date
-from enum import Enum
 from statistics import mean, median
 from string import digits
+from typing import Any
 
 from cachetools import cached, TTLCache
 from django.db import models
+from django.db.models import Q
+from django.db.models.constraints import UniqueConstraint, CheckConstraint
 from django.utils.functional import cached_property
 from django_pandas.managers import DataFrameManager
 
 from crawler.time_helper import convert_date_string_to_date
 
 logger = logging.getLogger(__name__)
-
-
-class Contract(Enum):
-    GOLD_COIN: str = 'CD1GOC0001'
-    GOLD: str = 'CD1GOB0001'
-    SILVER: str = 'CD1SIB0001'
 
 
 class ShareGroup(models.Model):
@@ -29,9 +25,133 @@ class ShareGroup(models.Model):
         return self.name
 
 
-class Share(models.Model):
+class HistoryHandler:
     BASE_DATE = date(1970, 1, 1)
 
+    DAY_OFFSET_DEFAULT = 1
+
+    @staticmethod
+    def get_today_new(day_offset: int = DAY_OFFSET_DEFAULT):
+        return date.today() - timedelta(days=day_offset)
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def raw_daily_history(self):
+        return self.history.all().order_by('date').to_dataframe(
+            ['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def daily_history(self, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
+        assert normalize_strategy in {'scaler', 'linear'}
+        df = self.raw_daily_history().copy()
+        df = df[df['date'] <= Share.get_today_new(day_offset)]
+        if normalize_strategy == 'scaler':
+            df['diff'] = df['close'] / df['open'].shift(-1)
+            if df.shape[0] > 0:
+                df.loc[df.shape[0] - 1, 'diff'] = 1
+                assert (df.iloc[-1]['diff'] == 1)
+
+                df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
+                df['last'] /= df['acc_diff']
+                df['first'] /= df['acc_diff']
+                df['high'] /= df['acc_diff']
+                df['low'] /= df['acc_diff']
+                df['close'] /= df['acc_diff']
+                df['open'] /= df['acc_diff']
+        else:
+            df['diff'] = df['close'] - df['open'].shift(-1)
+            if df.shape[0] > 0:
+                df.loc[df.shape[0] - 1, 'diff'] = 0
+                assert (df.iloc[-1]['diff'] == 0)
+
+                df['acc_diff'] = df['diff'][::-1].cumsum()[::-1]
+                df['last'] -= df['acc_diff']
+                df['first'] -= df['acc_diff']
+                df['high'] -= df['acc_diff']
+                df['low'] -= df['acc_diff']
+                df['close'] -= df['acc_diff']
+                df['open'] -= df['acc_diff']
+
+        return df
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=24 * 60 * 60))
+    def get_first_date_of_history(self):
+        if self.history_size() > 0:
+            return self.history.all().filter(date__lte=Share.get_today_new()).earliest('date').date
+        else:
+            return Share.get_today_new()
+
+    def get_sort_key(self) -> tuple:
+        return self.get_first_date_of_history(), self.ticker
+
+    def day_history(self, loc: int, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
+        return self.daily_history(day_offset, normalize_strategy).iloc[loc]
+
+    def history_of_date(self, d: date, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
+        daily_history = self.daily_history(day_offset, normalize_strategy)
+        return daily_history[daily_history['date'] <= d].iloc[-1]
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def last_day_history(self, day_offset: int = DAY_OFFSET_DEFAULT):
+        return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).latest('date').__dict__
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def history_size(self, day_offset: int = DAY_OFFSET_DEFAULT):
+        return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).count()
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def get_average_trade_value(self, days: int) -> tuple[float, float]:
+        if self.history_size() == 0:
+            return 0, 0
+
+        histories = list(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
+                             max(self.history_size() - days, 0):].values_list('value', flat=True))
+
+        return mean(histories), median(histories)
+
+
+class Contract(models.Model, HistoryHandler):
+    GOLD_COIN_ID: int = 42
+
+    id = models.BigIntegerField(null=False, blank=False, primary_key=True)
+    code = models.CharField(null=False, blank=False, max_length=256, db_index=True)
+    description = models.CharField(max_length=256)
+    size = models.IntegerField(null=False, blank=False)
+    commodity_id = models.IntegerField(null=False, blank=False)
+    commodity_name = models.CharField(null=False, blank=False, max_length=256, db_index=True)
+
+    def compute_value(self, count, price):
+        if self.id == Contract.GOLD_COIN_ID:
+            ratio = 0.00125
+        else:
+            ratio = 0.0024
+        return count * price * (1 + (-ratio if count < 0 else ratio))
+
+    @staticmethod
+    @cached(cache=TTLCache(maxsize=1, ttl=60 * 60))
+    def gold_bar():
+        return Contract.objects.get(id=41)
+
+    @staticmethod
+    @cached(cache=TTLCache(maxsize=1, ttl=60 * 60))
+    def gold_coin():
+        return Contract.objects.get(id=Contract.GOLD_COIN_ID)
+
+    @staticmethod
+    @cached(cache=TTLCache(maxsize=1, ttl=60 * 60))
+    def silver_bar():
+        return Contract.objects.get(id=43)
+
+    @cached_property
+    def synonym(self) -> dict[Any, str]:
+        return {Contract.gold_bar(): 'CD1GOB0001',
+                Contract.gold_coin(): 'CD1GOC0001',
+                Contract.silver_bar(): 'CD1SIB0001'}.get(self, None)
+
+    def __str__(self):
+        return self.commodity_name
+
+
+class Share(models.Model, HistoryHandler):
     class BazaarTypeChoices(models.IntegerChoices):
         NAGHDI = 1
         PURE = 2
@@ -42,12 +162,6 @@ class Share(models.Model):
     class BazaarChoices(models.IntegerChoices):
         Boors = 1
         FaraBoorse = 2
-
-    DAY_OFFSET_DEFAULT = 1
-
-    @staticmethod
-    def get_today_new(day_offset: int = DAY_OFFSET_DEFAULT):
-        return date.today() - timedelta(days=day_offset)
 
     id = models.BigIntegerField(null=False, blank=False, primary_key=True)
     isin = models.CharField(null=True, blank=False, max_length=256, db_index=True, unique=True)
@@ -82,11 +196,13 @@ class Share(models.Model):
             elif self.extra_data['کد زیر گروه صنعت'] == '6810':
                 ratio = -0.00066125 if count < 0 else 0.0006075
             else:
-                ratio = -0.0011875 if count < 0 else 0.00116
+                ratio = -0.0011875 * 2 if count < 0 else 0.00116 * 2
         elif self.group_id == 69 or self.bazaar_group == 208:  # Akhza
             ratio = -0.000725 if count < 0 else 0.000725
         elif self.group_id == 56 and self.ticker.startswith('سکه'):  # gold
             ratio = -0.00125 if count < 0 else 0.00125
+        elif self.group_id == 42 and self.ticker.startswith('زعف'):
+            ratio = -0.0024 if count < 0 else 0.0024
         elif self.is_sell_option or self.is_buy_option:  # options
             ratio = -0.00103 if count < 0 else 0.00103
         else:  # TODO: Boors and fara boors could be separated
@@ -195,7 +311,7 @@ class Share(models.Model):
 
     @cached_property
     def is_sell_option(self):
-        return self.ticker[0] == ['ط', 'ه'] and 'اختیار' in self.description
+        return self.ticker[0] in ['ط', 'ه'] and 'اختیار' in self.description
 
     @cached_property
     def is_bond(self):
@@ -209,85 +325,13 @@ class Share(models.Model):
     def is_gold_coin(self):
         return self.ticker.startswith('سکه') and self.extra_data['کد تابلو'] == '4' and self.group_id == 56
 
-    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def raw_daily_history(self):
-        return self.history.all().order_by('date').to_dataframe(
-            ['date', 'first', 'high', 'low', 'last', 'volume', 'value', 'open', 'close'])
-
-    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def daily_history(self, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
-        assert normalize_strategy in {'scaler', 'linear'}
-        df = self.raw_daily_history().copy()
-        df = df[df['date'] <= Share.get_today_new(day_offset)]
-        if normalize_strategy == 'scaler':
-            df['diff'] = df['close'] / df['open'].shift(-1)
-            if df.shape[0] > 0:
-                df.loc[df.shape[0] - 1, 'diff'] = 1
-                assert (df.iloc[-1]['diff'] == 1)
-
-                df['acc_diff'] = df['diff'][::-1].cumprod()[::-1]
-                df['last'] /= df['acc_diff']
-                df['first'] /= df['acc_diff']
-                df['high'] /= df['acc_diff']
-                df['low'] /= df['acc_diff']
-                df['close'] /= df['acc_diff']
-                df['open'] /= df['acc_diff']
-        else:
-            df['diff'] = df['close'] - df['open'].shift(-1)
-            if df.shape[0] > 0:
-                df.loc[df.shape[0] - 1, 'diff'] = 0
-                assert (df.iloc[-1]['diff'] == 0)
-
-                df['acc_diff'] = df['diff'][::-1].cumsum()[::-1]
-                df['last'] -= df['acc_diff']
-                df['first'] -= df['acc_diff']
-                df['high'] -= df['acc_diff']
-                df['low'] -= df['acc_diff']
-                df['close'] -= df['acc_diff']
-                df['open'] -= df['acc_diff']
-
-        return df
-
-    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=24 * 60 * 60))
-    def get_first_date_of_history(self):
-        if self.history_size() > 0:
-            return self.history.all().filter(date__lte=Share.get_today_new()).earliest('date').date
-        else:
-            return Share.get_today_new()
-
-    def get_sort_key(self) -> tuple:
-        return self.get_first_date_of_history(), self.ticker
-
-    def day_history(self, loc: int, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
-        return self.daily_history(day_offset, normalize_strategy).iloc[loc]
-
-    def history_of_date(self, d: date, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
-        daily_history = self.daily_history(day_offset, normalize_strategy)
-        return daily_history[daily_history['date'] <= d].iloc[-1]
-
-    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def last_day_history(self, day_offset: int = DAY_OFFSET_DEFAULT):
-        return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).latest('date').__dict__
-
-    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def history_size(self, day_offset: int = DAY_OFFSET_DEFAULT):
-        return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).count()
-
-    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def get_average_trade_value(self, days: int) -> tuple[float, float]:
-        if self.history_size() == 0:
-            return 0, 0
-
-        histories = list(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
-                         max(self.history_size() - days, 0):].values_list('value', flat=True))
-        return mean(histories), median(histories)
-
     def __str__(self):
         return self.ticker
 
 
-class ShareDailyHistory(models.Model):
-    share = models.ForeignKey(Share, null=False, blank=False, on_delete=models.CASCADE, related_name="history")
+class DailyHistory(models.Model):
+    share = models.ForeignKey(Share, null=True, blank=True, on_delete=models.CASCADE, related_name="history")
+    contract = models.ForeignKey(Contract, null=True, blank=True, on_delete=models.CASCADE, related_name="history")
     date = models.DateField(null=False, blank=False, db_index=True)
 
     first = models.IntegerField(null=False, blank=False)
@@ -304,8 +348,30 @@ class ShareDailyHistory(models.Model):
 
     objects = DataFrameManager()
 
+    @cached_property
+    def asset(self):
+        return self.share if self.share else self.contract
+
     class Meta:
-        unique_together = (("share", "date"),)
+        constraints = [
+            UniqueConstraint(
+                fields=['date', 'share'],
+                condition=Q(share__isnull=False),
+                name='daily_history_date_share_unique'
+            ),
+            UniqueConstraint(
+                fields=['date', 'contract'],
+                condition=Q(contract__isnull=False),
+                name='daily_history_date_contract_unique'
+            ),
+            CheckConstraint(
+                condition=(
+                        Q(share__isnull=False, contract__isnull=True) |
+                        Q(share__isnull=True, contract__isnull=False)
+                ),
+                name='daily_history_share_contract_exclusion'
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.share}: {self.date}"
+        return f"{self.asset}: {self.date}"
