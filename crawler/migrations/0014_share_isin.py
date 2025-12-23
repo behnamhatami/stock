@@ -7,8 +7,8 @@ def insert_isin(apps, schema_editor):
     Share = apps.get_model("crawler", "Share")
     updated_shares: list[Share] = []
     for share in Share.objects.all():
-        if share.extra_data:
-            share.isin = share.extra_data['کد 12 رقمی نماد']
+        if share.identity:
+            share.isin = share.identity['instrumentID']
             updated_shares.append(share)
 
     Share.objects.bulk_update(updated_shares, ['isin'], batch_size=100)

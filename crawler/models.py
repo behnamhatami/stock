@@ -80,9 +80,6 @@ class HistoryHandler:
         else:
             return Share.get_today_new()
 
-    def get_sort_key(self) -> tuple:
-        return self.get_first_date_of_history(), self.ticker
-
     def day_history(self, loc: int, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
         return self.daily_history(day_offset, normalize_strategy).iloc[loc]
 
@@ -95,7 +92,7 @@ class HistoryHandler:
         return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).latest('date').__dict__
 
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
-    def history_size(self, day_offset: int = DAY_OFFSET_DEFAULT):
+    def history_size(self, day_offset: int = DAY_OFFSET_DEFAULT) -> int:
         return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).count()
 
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
@@ -187,18 +184,21 @@ class Share(models.Model, HistoryHandler):
     extra_data = models.JSONField(null=True, blank=False)
     identity = models.JSONField(null=True, blank=False)
 
-
     def compute_value(self, count, price):
         # logger.info(f'{self.group.id}, {count}, {price}')
         if self.group_id == 59:  # maskan
             ratio = -0.0024 if count < 0 else 0.0049
         elif self.group_id == 68:  # etf
-            if self.extra_data['کد زیر گروه صنعت'] == '6812':
-                ratio = -0.0001875 if count < 0 else 0.0001875
-            elif self.extra_data['کد زیر گروه صنعت'] == '6810':
-                ratio = -0.00066125 if count < 0 else 0.0006075
+            if int(self.identity['subSector']['cSoSecVal']) == 6812:
+                ratio = -0.00036875 if count < 0 else 0.00036875
+            elif int(self.identity['subSector']['cSoSecVal']) == 6810:
+                ratio = -0.001263 if count < 0 else 0.001175
+            elif int(self.identity['subSector']['cSoSecVal']) == 6818:
+                ratio = -0.0003625 if count < 0 else 0.0003625
+            elif self.identity['subSector']['cSoSecVal'] in {6810, 6820} and self.identity['cgrValCot'] in {'QS', 'Q1'}:
+                ratio = -0.001200 if count < 0 else 0.001200
             else:
-                ratio = -0.0011875 * 2 if count < 0 else 0.00116 * 2
+                ratio = -0.0023 if count < 0 else 0.00245
         elif self.group_id == 69 or self.bazaar_group == 208:  # Akhza
             ratio = -0.000725 if count < 0 else 0.000725
         elif self.group_id == 56 and self.ticker.startswith('سکه'):  # gold
@@ -245,6 +245,7 @@ class Share(models.Model, HistoryHandler):
                     'نارنج': 'نارنج اهرم',
                     'فارماکیان': 'فارما کیان',
                     'اگاس': 'آگاس',
+                    'الکتروما': 'الکتروماد',
                 }
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
                     ticker = dictionary.get(ticker, ticker)
@@ -265,9 +266,9 @@ class Share(models.Model, HistoryHandler):
                         logger.warning(f"{self.ticker} description ignored as option ({self.description})")
                     return None, None, None
 
-            elif self.is_bond and self.extra_data and self.extra_data['کد زیر گروه صنعت'] == '6940':
+            elif self.is_bond and self.identity and int(self.identity['subSector']['cSoSecVal']) == 6940:
                 return convert_date_string_to_date(re.findall(r'\d+$', self.description)[0]), None, None
-            elif self.is_rights_issue and self.extra_data:
+            elif self.is_rights_issue and self.identity:
                 if Share.objects.filter(enable=True, ticker=self.ticker[:-1]).exists():
                     candidates = Share.objects.filter(enable=True, ticker=self.ticker[:-1])
                 else:
@@ -281,13 +282,13 @@ class Share(models.Model, HistoryHandler):
                     candidates = sorted(candidates, reverse=True,
                                         key=lambda s: (
                                             s.last_day_history()['date'] if s.history_size() > 0 else Share.BASE_DATE,
-                                            s.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']))
+                                            s.identity['cSocCSAC'] == self.identity['cSocCSAC']))
 
                 return None, None, candidates[0]
-            elif self.ticker[-1].isdigit() and self.extra_data:
+            elif self.ticker[-1].isdigit() and self.identity:
                 candidates = Share.objects.filter(enable=True, ticker=self.ticker.rstrip(digits))
-                candidates = [candidate for candidate in candidates if candidate.extra_data and self.extra_data and
-                              candidate.extra_data['کد 4 رقمی شرکت'] == self.extra_data['کد 4 رقمی شرکت']]
+                candidates = [candidate for candidate in candidates if candidate.identity and
+                              candidate.identity['cSocCSAC'] == self.identity['cSocCSAC']]
 
                 if len(candidates) == 0:
                     return None, None, None
@@ -325,7 +326,8 @@ class Share(models.Model, HistoryHandler):
 
     @cached_property
     def is_gold_coin(self):
-        return self.ticker.startswith('سکه') and self.extra_data['کد تابلو'] == '4' and self.group_id == 56
+        return self.group_id == 56 and int(self.identity['subSector']['cSoSecVal']) == 5699 and self.identity[
+            'cgrValCot'] == 'QS'
 
     def __str__(self):
         return self.ticker
