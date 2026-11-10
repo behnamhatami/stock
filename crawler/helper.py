@@ -129,21 +129,6 @@ def run_jobs(job_title, jobs, max_workers=10, log=True, log_exception_on_failure
 
 
 @log_time
-def update_share_list_by_group(group):
-    params = (
-        ('g', group.id),
-        ('t', 'g'),
-        ('s', '0'),
-    )
-    response = requests.get('http://old.tsetmc.com/tsev2/data/InstValue.aspx', params=params, timeout=10)
-
-    if response.status_code != 200:
-        raise Exception(f"Http Error: {response.status_code}")
-
-    return response.text
-
-
-@log_time
 def update_share_groups():
     response = requests.get('https://cdn.tsetmc.com/api/StaticData/GetStaticData', headers=get_tse_new_site_headers())
     response.raise_for_status()
