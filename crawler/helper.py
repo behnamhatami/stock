@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import requests
 import urllib3
-from bs4 import BeautifulSoup
 from django.utils import timezone
 from django.utils.timezone import make_aware
 from getuseragent import UserAgent
@@ -158,17 +157,19 @@ def update_share_identity(share: Share):
 
     try:
         response = json.loads(characters.ar_to_fa(json.dumps(response)))
+        group_id = int(response['sector']['cSecVal'].strip())
+        group = ShareGroup.objects.filter(id=group_id).first()
+        if group is None:
+            logger.warning(f'{share.ticker}: unknown sector {group_id}; run update_share_groups')
 
-        if share.identity:
-            if share.identity != response:
-                logger.warning(f'{share.ticker}: detailed info changed from {share.identity} to {response}')
-            else:
-                return
+        if share.identity and share.identity != response:
+            logger.warning(f'{share.ticker}: identity changed from {share.identity} to {response}')
 
-        share.identity = response
-        share.group = ShareGroup.objects.get(id=int(share.identity['sector']['cSecVal'].strip()))
-        share.isin = share.identity['instrumentID']
-        share.save()
+        if (share.identity, share.group, share.isin) == (response, group, response['instrumentID']):
+            return
+
+        share.identity, share.group, share.isin = response, group, response['instrumentID']
+        share.save(update_fields=['identity', 'group', 'isin'])
     except:
         logger.exception(f'{share.ticker} update share detailed info failed {response}!!')
         raise

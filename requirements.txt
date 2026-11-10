@@ -4,7 +4,6 @@ django-pandas==0.6.7
 requests==2.34.2
 django-cron==0.6
 persiantools==6.2.0
-beautifulsoup4==4.15.0
 stockstats==0.6.11
 getuseragent==0.0.7
 matplotlib==3.11.2

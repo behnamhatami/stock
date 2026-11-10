@@ -152,6 +152,27 @@ class Contract(models.Model, HistoryHandler):
         return self.commodity_name
 
 
+OPTION_DICT_SYNONYMS: dict = {
+    'ملی مس': 'فملی',
+    'حافرین': 'حآفرین',
+    'ص دارا': 'دارا یکم',
+    'ص آگاه': 'پتروآگاه',
+    'هم‌وزن': 'هم وزن',
+    'اخز101': 'اخزا101',
+    'معادن': 'ومعادن',
+    'بهمن': 'خبهمن',
+    'غدیر': 'وغدیر',
+    'تجارت': 'وتجارت',
+    'صندوق': 'وصندوق',
+    'امید': 'وامید',
+    'نارنج': 'نارنج اهرم',
+    'فارماکیان': 'فارما کیان',
+    'اگاس': 'آگاس',
+    'الکتروما': 'الکتروماد',
+    'جوانه ک': 'جوانه کوچک',
+}
+
+
 class Share(models.Model, HistoryHandler):
     class BazaarTypeChoices(models.IntegerChoices):
         NAGHDI = 1
@@ -232,27 +253,8 @@ class Share(models.Model, HistoryHandler):
                 dt = convert_date_string_to_date(parts[2])
                 ticker_parts = parts[0].replace('.', ' ').strip().split()
 
-                dictionary = {
-                    'ملی مس': 'فملی',
-                    'حافرین': 'حآفرین',
-                    'ص دارا': 'دارا یکم',
-                    'ص آگاه': 'پتروآگاه',
-                    'هم‌وزن': 'هم وزن',
-                    'اخز101': 'اخزا101',
-                    'معادن': 'ومعادن',
-                    'بهمن': 'خبهمن',
-                    'غدیر': 'وغدیر',
-                    'تجارت': 'وتجارت',
-                    'صندوق': 'وصندوق',
-                    'امید': 'وامید',
-                    'نارنج': 'نارنج اهرم',
-                    'فارماکیان': 'فارما کیان',
-                    'اگاس': 'آگاس',
-                    'الکتروما': 'الکتروماد',
-                    'جوانه ک': 'جوانه کوچک',
-                }
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
-                    ticker = dictionary.get(ticker, ticker)
+                    ticker = OPTION_DICT_SYNONYMS.get(ticker, ticker)
                     candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if
                                   candidate.history_size() > 0]
                     if len(candidates) == 0:
@@ -260,7 +262,6 @@ class Share(models.Model, HistoryHandler):
                     elif len(candidates) > 1:
                         candidates = sorted(candidates, key=lambda candidate: candidate.last_day_history()['date'],
                                             reverse=True)
-
                     if parts[1]:
                         return dt, int(parts[1]), candidates[0]
                     else:
