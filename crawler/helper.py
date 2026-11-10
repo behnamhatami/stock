@@ -166,9 +166,8 @@ def update_share_identity(share: Share):
                 return
 
         share.identity = response
-        if share.group_id:
-            assert share.group_id == int(share.identity['sector']['cSecVal'].strip())
-        assert share.isin == share.identity['instrumentID']
+        share.group = ShareGroup.objects.get(id=int(share.identity['sector']['cSecVal'].strip()))
+        share.isin = share.identity['instrumentID']
         share.save()
     except:
         logger.exception(f'{share.ticker} update share detailed info failed {response}!!')
@@ -317,40 +316,6 @@ def get_watch_list(h='0', r='0'):
     '''
 
     return response.text
-
-
-def get_share_detailed_info(share):
-    response = requests.get('http://old.tsetmc.com/Loader.aspx', headers=get_headers(share),
-                            params=(('Partree', '15131M'), ('i', share.id),), timeout=10)
-
-    data = {}
-    for row in BeautifulSoup(response.text, features='html.parser').body.select('tr'):
-        key = row.select('td')[0].contents[0].strip()
-
-        value_contents = row.select('td')[1].contents
-        value = value_contents[0].strip() if value_contents else None
-
-        data[key] = value
-
-    if not data or 'کد گروه صنعت' not in data or 'کد 12 رقمی نماد' not in data:
-        return
-
-    try:
-        data = json.loads(characters.ar_to_fa(json.dumps(data)))
-        if share.extra_data:
-            if share.extra_data != data:
-                logger.warning(f'{share.ticker}: detailed info changed from {share.extra_data} to {data}')
-            else:
-                return
-
-        share.extra_data = data
-        share.group = ShareGroup.objects.get(id=data['کد گروه صنعت'])
-        share.isin = data['کد 12 رقمی نماد']
-        share.save()
-    except:
-        logger.exception(f'{share.ticker} update share detailed info failed {data}!!')
-        raise
-
 
 def update_contract_list(batch_size: int = 100):
     live_response = submit_request(method='get',
