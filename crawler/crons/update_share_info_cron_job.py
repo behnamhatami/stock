@@ -11,7 +11,7 @@ class UpdateShareInfoCronJob(CronJobBase):
     RUN_AT_TIMES = ['06:00']
     RETRY_AFTER_FAILURE_MINS = 60
 
-    schedule = Schedule(run_on_days=RUN_ON_DAYS, run_at_times=RUN_AT_TIMES,
+    schedule = Schedule(run_weekly_on_days=RUN_ON_DAYS, run_at_times=RUN_AT_TIMES,
                         retry_after_failure_mins=RETRY_AFTER_FAILURE_MINS)
     code = 'crawler.daily_update_share_info_cron_job'  # a unique code
 
