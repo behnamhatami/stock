@@ -88,6 +88,10 @@ class HistoryHandler:
         return daily_history[daily_history['date'] <= d].iloc[-1]
 
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
+    def first_history_after_date(self, dt: date):
+        return self.history.all().filter(date__gte=dt).earliest('date')
+
+    @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
     def last_day_history(self, day_offset: int = DAY_OFFSET_DEFAULT):
         return self.history.all().filter(date__lte=Share.get_today_new(day_offset)).latest('date').__dict__
 
@@ -195,7 +199,7 @@ class Share(models.Model, HistoryHandler):
                 ratio = -0.001263 if count < 0 else 0.001175
             elif int(self.identity['subSector']['cSoSecVal']) == 6818:
                 ratio = -0.0003625 if count < 0 else 0.0003625
-            elif self.identity['subSector']['cSoSecVal'] in {6810, 6820} and self.identity['cgrValCot'] in {'QS', 'Q1'}:
+            elif self.identity['subSector']['cSoSecVal'] in {6822, 6823, 6824}:
                 ratio = -0.001200 if count < 0 else 0.001200
             else:
                 ratio = -0.0023 if count < 0 else 0.00245
@@ -246,6 +250,7 @@ class Share(models.Model, HistoryHandler):
                     'فارماکیان': 'فارما کیان',
                     'اگاس': 'آگاس',
                     'الکتروما': 'الکتروماد',
+                    'جوانه ک': 'جوانه کوچک',
                 }
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
                     ticker = dictionary.get(ticker, ticker)

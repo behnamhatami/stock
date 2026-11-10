@@ -432,7 +432,7 @@ def update_contract_history_item(contract, days: int | None = None, batch_size: 
                     'count': row['C_Buy'] + row['C_Sell'],
                     }
 
-            if data['count'] == 0:
+            if data['last'] == 0 or data['open'] == 0 or data['first'] == 0 or data['open'] == 0:
                 continue
 
             if DailyHistory.objects.filter(contract=contract, date=data['date']).exists():
