@@ -16,38 +16,31 @@ R = TypeVar('R')
 
 
 def log_time(f: Callable[P, R]) -> Callable[P, R]:
-    """Log how long `f` takes; works for both regular and `async def` functions."""
+    """Log how long `f` takes; works for both regular and `async def` functions.
+
+    Durations use `time.perf_counter()`: a monotonic clock (never jumps when the system time changes)
+    with the highest available resolution.
+    """
     if inspect.iscoroutinefunction(f):
         async_f: Callable[P, Awaitable[Any]] = f
 
         @functools.wraps(f)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-            t = time.time()
+            start = time.perf_counter()
             try:
                 return await async_f(*args, **kwargs)
             finally:
-                logger.info(f"{f.__name__} runs in {time.time() - t}")
+                logger.info(f"{f.__name__} runs in {time.perf_counter() - start:.2f}s")
 
         return async_wrapper  # type: ignore[return-value]
 
     @functools.wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        t = time.time()
+        start = time.perf_counter()
         try:
             return f(*args, **kwargs)
         finally:
-            logger.info(f"{f.__name__} runs in {time.time() - t}")
-
-    return wrapper
-
-
-def log_time_class(f: Callable[P, R]) -> Callable[P, R]:
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        t = time.time()
-        try:
-            return f(*args, **kwargs)
-        finally:
-            logger.info(f"{args[0]}: {f.__name__} runs in {round(time.time() - t, 2)}")
+            logger.info(f"{f.__name__} runs in {time.perf_counter() - start:.2f}s")
 
     return wrapper
 
