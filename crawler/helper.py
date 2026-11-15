@@ -202,9 +202,9 @@ class Crawler:
         return {
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-US,en;q=0.5',
-            'Origin': 'http://tsetmc.com',
+            'Origin': 'https://www.tsetmc.com',
             'DNT': '1',
-            'Referer': 'http://tsetmc.com/',
+            'Referer': 'https://www.tsetmc.com/',
             'User-Agent': user_agent.Random(),
         }
 
@@ -284,21 +284,24 @@ class Crawler:
 
     @staticmethod
     def _save_share_groups(rows: list[JSONDict]) -> None:
-        for item in rows:
-            if item['type'] == 'IndustrialGroup':
-                code: int = item['code']
-                name: str = characters.ar_to_fa(item['name']).strip()
+        names: dict[int, str] = {int(item['code']): characters.ar_to_fa(item['name']).strip()
+                                 for item in rows if item['type'] == 'IndustrialGroup'}
+        existing: dict[int, ShareGroup] = ShareGroup.objects.in_bulk(list(names))
 
-                try:
-                    group = ShareGroup.objects.get(id=code)
-                except ShareGroup.DoesNotExist:
-                    group = ShareGroup()
-
-                group.id = int(code)
+        new_list = [ShareGroup(id=code, name=name) for code, name in names.items() if code not in existing]
+        update_list: list[ShareGroup] = []
+        for code, name in names.items():
+            group = existing.get(code)
+            if group is not None and group.name != name:
                 group.name = name
-                group.save()
+                update_list.append(group)
 
-        logger.info(f"Share group info updated. number of groups: {ShareGroup.objects.count()}")
+        with transaction.atomic():
+            ShareGroup.objects.bulk_create(new_list, batch_size=100)
+            ShareGroup.objects.bulk_update(update_list, ['name'], batch_size=100)
+
+        logger.info(f"Share group info updated. {len(new_list)} added, {len(update_list)} renamed, "
+                    f"{len(names)} groups in total.")
 
     async def update_share_identity(self, share: Share) -> None:
         response: JSONDict = (await self.submit_request(
@@ -337,42 +340,45 @@ class Crawler:
 
     @staticmethod
     def _save_search_result(keyword: str, rows: list[JSONDict]) -> None:
-        new_list: list[Share] = []
-        update_list: list[Share] = []
+        found: dict[int, JSONDict] = {}
         for row in rows:
-            data: JSONDict = {
-                'id': int(row['insCode']),
+            share_id = int(row['insCode'])
+            found.setdefault(share_id, {
+                'id': share_id,
                 'ticker': characters.ar_to_fa(str(row['lVal18AFC'])).strip(),
                 'description': characters.ar_to_fa(row['lVal30']).strip(),
                 'bazaar_type': row['flow'],
                 'enable': row['lastDate'],
-            }
-            try:
-                share = Share.objects.get(id=data['id'])
-                updated: bool = False
-                for key, value in data.items():
-                    if getattr(share, key) != value:
-                        setattr(share, key, value)
-                        updated = True
+            })
+        existing: dict[int, Share] = Share.objects.in_bulk(list(found))
 
-                parsed_data = share.parse_data()
-                if (share.strike_date, share.option_strike_price, share.base_share) != parsed_data:
-                    share.strike_date, share.option_strike_price, share.base_share = parsed_data
+        new_list: list[Share] = []
+        update_list: list[Share] = []
+        for share_id, data in found.items():
+            share = existing.get(share_id)
+            if share is None:
+                new_list.append(Share(**data))
+                continue
+
+            updated: bool = False
+            for key, value in data.items():
+                if getattr(share, key) != value:
+                    setattr(share, key, value)
                     updated = True
 
-                if updated:
-                    update_list.append(share)
-            except Share.DoesNotExist:
-                for share in new_list:
-                    if share.id == data['id']:
-                        break
-                else:
-                    new_list.append(Share(**data))
+            parsed_data = share.parse_data()
+            if (share.strike_date, share.option_strike_price, share.base_share) != parsed_data:
+                share.strike_date, share.option_strike_price, share.base_share = parsed_data
+                updated = True
 
-        Share.objects.bulk_create(new_list, batch_size=100)
-        Share.objects.bulk_update(update_list,
-                                  ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
-                                   'strike_date', 'base_share'], batch_size=100)
+            if updated:
+                update_list.append(share)
+
+        with transaction.atomic():
+            Share.objects.bulk_create(new_list, batch_size=100)
+            Share.objects.bulk_update(update_list,
+                                      ['ticker', 'description', 'bazaar_type', 'enable', 'option_strike_price',
+                                       'strike_date', 'base_share'], batch_size=100)
         if new_list or update_list:
             logger.info(f"update share list {keyword}, {len(new_list)} added ({new_list}), "
                         f"{len(update_list)} updated.")
@@ -501,30 +507,30 @@ class Crawler:
             headers={'User-Agent': user_agent.Random()})).json()
         await sync_to_async(self._save_contract_list)(live_response, batch_size)
 
-    @staticmethod
-    def _save_contract_list(rows: list[JSONDict], batch_size: int) -> None:
+    CONTRACT_FIELDS: typing.ClassVar[dict[str, str]] = {
+        'code': 'ContractCode', 'description': 'ContractDescription', 'size': 'ContractSize',
+        'commodity_id': 'CommodityID', 'commodity_name': 'CommodityName'}
+
+    @classmethod
+    def _save_contract_list(cls, rows: list[JSONDict], batch_size: int) -> None:
+        found: dict[int, JSONDict] = {int(row['ContractID']): row for row in rows}
+        existing: dict[int, Contract] = Contract.objects.in_bulk(list(found))
+
         new_list: list[Contract] = []
         update_list: list[Contract] = []
+        for contract_id, row in found.items():
+            values = {field: row[key] for field, key in cls.CONTRACT_FIELDS.items()}
+            contract = existing.get(contract_id)
+            if contract is None:
+                new_list.append(Contract(id=contract_id, **values))
+            elif any(getattr(contract, field) != value for field, value in values.items()):
+                for field, value in values.items():
+                    setattr(contract, field, value)
+                update_list.append(contract)
 
-        for row in rows:
-            try:
-                contract = Contract.objects.get(id=row['ContractID'])
-            except Contract.DoesNotExist:
-                contract = Contract()
-
-            contract.code = row['ContractCode']
-            contract.description = row['ContractDescription']
-            contract.size = row['ContractSize']
-            contract.commodity_id = row['CommodityID']
-            contract.commodity_name = row['CommodityName']
-
-            (update_list if contract.id else new_list).append(contract)
-            contract.id = row['ContractID']
-
-        Contract.objects.bulk_create(new_list, batch_size=batch_size)
-        Contract.objects.bulk_update(update_list,
-                                     ['code', 'description', 'size', 'commodity_id', 'commodity_name'],
-                                     batch_size=100)
+        with transaction.atomic():
+            Contract.objects.bulk_create(new_list, batch_size=batch_size)
+            Contract.objects.bulk_update(update_list, list(cls.CONTRACT_FIELDS), batch_size=100)
         logger.info(f"update contract list, {len(new_list)} ({new_list}) added, {len(update_list)} updated.")
 
     async def update_contract_history_item(self, contract: Contract, days: int | None = None,

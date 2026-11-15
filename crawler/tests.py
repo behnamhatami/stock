@@ -9,8 +9,9 @@ import orjson
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from django.core.management import call_command
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
 from django.test import TestCase, TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from tenacity import wait_none
 
@@ -354,3 +355,58 @@ class HistoryCheckpointTests(TestCase):
                     await crawler.update_share_history_item(share, days=3)
         await share.arefresh_from_db()
         self.assertIsNone(share.last_update)
+
+
+class BulkSaveTests(TestCase):
+    """Saving a list costs a fixed number of queries, however many rows it has."""
+
+    def test_share_groups_insert_and_rename(self) -> None:
+        ShareGroup.objects.create(id=27, name='old name')
+        rows = [{'type': 'IndustrialGroup', 'code': 27, 'name': 'فلزات اساسي'},
+                {'type': 'IndustrialGroup', 'code': 68, 'name': 'صندوق سرمايه گذاري'},
+                {'type': 'Sector', 'code': 1, 'name': 'not a group'}]
+        with self.assertNumQueries(5):  # select, savepoint, insert, update, release
+            Crawler._save_share_groups(rows)
+        self.assertEqual(dict(ShareGroup.objects.values_list('id', 'name')),
+                         {27: 'فلزات اساسی', 68: 'صندوق سرمایه گذاری'})
+
+    def test_search_result_queries_do_not_grow_with_rows(self) -> None:
+        Share.objects.create(id=1, ticker='old', description='old', bazaar_type=1, enable=True)
+
+        def rows(n: int) -> list[dict[str, Any]]:
+            return [{'insCode': str(i), 'lVal18AFC': f'نماد{i}', 'lVal30': f'شرکت {i}', 'flow': 1, 'lastDate': 1}
+                    for i in range(1, n + 1)]
+
+        with CaptureQueriesContext(connection) as small:
+            Crawler._save_search_result('a', rows(2))
+        with CaptureQueriesContext(connection) as large:
+            Crawler._save_search_result('b', rows(40) + rows(40))  # duplicates are ignored
+        self.assertLessEqual(len(large), len(small))  # 80 rows cost no more queries than 2
+        self.assertEqual(Share.objects.count(), 40)
+        self.assertEqual(Share.objects.get(id=1).ticker, 'نماد1')
+
+    def test_contract_list_inserts_updates_and_skips_unchanged(self) -> None:
+        Contract.objects.create(id=41, code='GB', description='gold bar', size=1, commodity_id=1, commodity_name='gold')
+        Contract.objects.create(id=42, code='GC', description='gold coin', size=1, commodity_id=2,
+                                commodity_name='coin')
+
+        def row(contract_id: int, code: str, description: str, commodity_id: int, name: str) -> dict[str, Any]:
+            return {'ContractID': contract_id, 'ContractCode': code, 'ContractDescription': description,
+                    'ContractSize': 1, 'CommodityID': commodity_id, 'CommodityName': name}
+
+        rows = [row(41, 'GB', 'gold bar', 1, 'gold'), row(42, 'GC2', 'gold coin', 2, 'coin'),
+                row(43, 'SB', 'silver bar', 3, 'silver')]
+        with self.assertLogs('crawler.helper', level='INFO') as logs, self.assertNumQueries(5):
+            Crawler._save_contract_list(rows, 100)
+        self.assertIn('1 ([<Contract: silver>]) added, 1 updated', logs.output[-1])
+        self.assertEqual(Contract.objects.get(id=42).code, 'GC2')
+        self.assertTrue(Contract.objects.filter(id=43).exists())
+
+
+class SettingsTests(TestCase):
+    def test_request_headers_use_the_new_site(self) -> None:
+        headers = Crawler.get_tse_new_site_headers()
+        self.assertEqual((headers['Origin'], headers['Referer']), ('https://www.tsetmc.com', 'https://www.tsetmc.com/'))
+
+    def test_sqlite_takes_the_write_lock_when_a_transaction_starts(self) -> None:
+        self.assertEqual(connection.transaction_mode, 'IMMEDIATE')

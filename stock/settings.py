@@ -95,6 +95,12 @@ DATABASES = {
         'NAME': BASE_DIR + "/" + 'stock.sql',
         'OPTIONS': {
             'timeout': 1000,  # in seconds
+            # Take the write lock when a transaction starts, so overlapping crawler runs wait for it
+            # instead of failing with "database is locked" when a read transaction tries to write.
+            'transaction_mode': 'IMMEDIATE',
+            # WAL lets the admin and reports read while the crawler writes. Keep the database on a
+            # local disk; WAL does not work on network file systems.
+            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL',
         },
         'USER': '',
         'PASSWORD': '',
