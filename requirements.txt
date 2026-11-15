@@ -25,3 +25,4 @@ django-common-helpers==0.9.2
 bidict==0.24.1
 PersianG2p==0.3.2
 nltk==3.10.4
+orjson==3.13.0

@@ -1,14 +1,37 @@
+import functools
+import inspect
 import logging
 import time
+from collections.abc import Awaitable, Callable
+from typing import Any, ParamSpec, TypeVar
 
 from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest
 from ipware import get_client_ip
 
 logger = logging.getLogger(__name__)
 
+P = ParamSpec('P')
+R = TypeVar('R')
 
-def log_time(f):
-    def wrapper(*args, **kwargs):
+
+def log_time(f: Callable[P, R]) -> Callable[P, R]:
+    """Log how long `f` takes; works for both regular and `async def` functions."""
+    if inspect.iscoroutinefunction(f):
+        async_f: Callable[P, Awaitable[Any]] = f
+
+        @functools.wraps(f)
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+            t = time.time()
+            try:
+                return await async_f(*args, **kwargs)
+            finally:
+                logger.info(f"{f.__name__} runs in {time.time() - t}")
+
+        return async_wrapper  # type: ignore[return-value]
+
+    @functools.wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         t = time.time()
         try:
             return f(*args, **kwargs)
@@ -18,8 +41,8 @@ def log_time(f):
     return wrapper
 
 
-def log_time_class(f):
-    def wrapper(*args, **kwargs):
+def log_time_class(f: Callable[P, R]) -> Callable[P, R]:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         t = time.time()
         try:
             return f(*args, **kwargs)
@@ -29,9 +52,9 @@ def log_time_class(f):
     return wrapper
 
 
-def check_ip(white_list: list):
-    def dec(f):
-        def wrapper(request, *args, **kwargs):
+def check_ip(white_list: list[str]) -> Callable[[Callable[..., R]], Callable[..., R]]:
+    def dec(f: Callable[..., R]) -> Callable[..., R]:
+        def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> R:
             client_ip, is_routable = get_client_ip(request)
             if client_ip not in white_list and request.user.is_anonymous:
                 logger.info(f"access from {client_ip}/{is_routable}")

@@ -49,6 +49,12 @@ python3 manage.py update_share_history
 ```
 if tooks couple of minute depends on your internet quality and `TSETMC` site speed to download all historical data of listed shares. It will give stat of the process during crawling `TSETMC` site.
 
+Crawling uses `asyncio` + `aiohttp` with one shared session. Every crawling command accepts `--concurrency`
+(default 10) to limit simultaneous requests:
+```
+python3 manage.py update_share_history --concurrency 20
+```
+
 ## 3- Access Data
 
 To access data you can use `Django` model `Share` object, which helps you to find your share, accessing its history and analyzing it. You can also find your data in `Django` admin.
