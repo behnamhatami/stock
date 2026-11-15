@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any
-from datetime import date
+from datetime import date, datetime, timezone as dt_timezone
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
@@ -8,10 +9,13 @@ import orjson
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from django.core.management import call_command
+from django.db import IntegrityError
 from django.test import TestCase, TransactionTestCase
+from django.utils import timezone
 from tenacity import wait_none
 
-from crawler.helper import Crawler, Response
+from crawler.helper import (Crawler, PermanentHttpError, Response, TransientHttpError, parse_retry_after,
+                            wait_backoff_or_retry_after)
 from crawler.models import Share, DailyHistory, ShareGroup, Contract
 
 
@@ -48,7 +52,24 @@ class SubmitRequestTests(IsolatedAsyncioTestCase):
             return web.json_response({'method': request.method, 'query': dict(request.query), 'body': body,
                                       'agent': request.headers.get('User-Agent')})
 
+        async def not_found(request: web.Request) -> web.Response:
+            self.calls['not_found'] = self.calls.get('not_found', 0) + 1
+            return web.Response(status=404)
+
+        async def rate_limited(request: web.Request) -> web.Response:
+            self.calls['rate_limited'] = self.calls.get('rate_limited', 0) + 1
+            if self.calls['rate_limited'] == 1:
+                return web.Response(status=429, headers={'Retry-After': '0'})
+            return web.json_response({'attempt': self.calls['rate_limited']})
+
+        async def unavailable(request: web.Request) -> web.Response:
+            self.calls['unavailable'] = self.calls.get('unavailable', 0) + 1
+            return web.Response(status=503)
+
         app = web.Application()
+        app.router.add_get('/not_found', not_found)
+        app.router.add_get('/rate_limited', rate_limited)
+        app.router.add_get('/unavailable', unavailable)
         app.router.add_get('/slow', slow)
         app.router.add_get('/flaky', flaky)
         app.router.add_get('/html', html)
@@ -100,6 +121,23 @@ class SubmitRequestTests(IsolatedAsyncioTestCase):
             posted = await crawler.submit_request('post', self.url('/echo'), data={'name': 'فملی', 'n': 1})
         self.assertEqual(posted.json()['body'], {'name': 'فملی', 'n': 1})
         self.assertIsInstance(posted.content, bytes)
+
+    async def test_permanent_http_error_is_not_retried(self) -> None:
+        async with Crawler() as crawler:
+            with self.assertRaises(PermanentHttpError) as raised:
+                await crawler.submit_request('get', self.url('/not_found'))
+        self.assertEqual((raised.exception.status_code, self.calls['not_found']), (404, 1))
+
+    async def test_rate_limit_is_retried(self) -> None:
+        async with Crawler() as crawler:
+            response = await crawler.submit_request('get', self.url('/rate_limited'))
+        self.assertEqual(response.json(), {'attempt': 2})
+
+    async def test_transient_error_stops_after_six_attempts(self) -> None:
+        async with Crawler() as crawler:
+            with self.assertRaises(TransientHttpError):
+                await crawler.submit_request('get', self.url('/unavailable'))
+        self.assertEqual(self.calls['unavailable'], 6)
 
     async def test_session_is_closed_on_exit(self) -> None:
         async with Crawler() as crawler:
@@ -221,3 +259,98 @@ class CommandTests(TransactionTestCase):
         share = Share.objects.get(id=1)
         self.assertEqual((share.group_id, share.isin), (27, 'IRO1MSMI0000'))
         self.assertTrue(Contract.objects.filter(id=41).exists())
+
+
+class RetryPolicyTests(IsolatedAsyncioTestCase):
+    def test_parse_retry_after(self) -> None:
+        now = datetime(2026, 11, 15, 8, 0, tzinfo=dt_timezone.utc)
+        self.assertEqual(parse_retry_after('120'), 120)
+        self.assertEqual(parse_retry_after('Sun, 15 Nov 2026 08:00:30 GMT', now=now), 30)
+        self.assertEqual(parse_retry_after('Sun, 15 Nov 2026 07:59:00 GMT', now=now), 0)
+        self.assertIsNone(parse_retry_after(None))
+        self.assertIsNone(parse_retry_after('soon'))
+
+    def _wait(self, exc: BaseException) -> float:
+        state = SimpleNamespace(attempt_number=1, outcome=SimpleNamespace(exception=lambda: exc))
+        return wait_backoff_or_retry_after(state)  # type: ignore[arg-type]
+
+    def test_wait_respects_retry_after_with_a_cap(self) -> None:
+        self.assertGreaterEqual(self._wait(TransientHttpError('429', 429, retry_after=40)), 40)
+        self.assertLessEqual(self._wait(TransientHttpError('429', 429, retry_after=10_000)), 300)
+        self.assertLessEqual(self._wait(TransientHttpError('503', 503)), 2)
+
+    async def test_closed_session_is_not_retried(self) -> None:
+        crawler = Crawler()
+        with patch.object(Crawler.submit_request.retry, 'wait', wait_none()):
+            with self.assertRaises(RuntimeError):
+                await crawler.submit_request('get', 'https://cdn.tsetmc.com/api/test')
+        self.assertEqual(Crawler.submit_request.statistics['attempt_number'], 1)
+
+
+def history_row(d_even: int, close: int, count: int = 3) -> dict[str, Any]:
+    return {'dEven': d_even, 'priceMax': close + 5, 'priceMin': close - 5, 'pClosing': close, 'priceYesterday': close,
+            'priceChange': 0, 'priceFirst': close, 'qTotCap': 1000, 'qTotTran5J': 10, 'zTotTran': count}
+
+
+class HistoryStorageTests(TestCase):
+    def setUp(self) -> None:
+        self.share = Share.objects.create(id=1, ticker='فملی', description='ملی صنایع مس ایران')
+
+    def stored_dates(self) -> list[date]:
+        return list(DailyHistory.objects.filter(share=self.share).order_by('date').values_list('date', flat=True))
+
+    def test_fills_gaps_around_existing_dates_in_any_order(self) -> None:
+        Crawler._save_share_history(self.share, [history_row(20261110, 100)], timezone.now(), 100)
+        rows = [history_row(20261108, 90), history_row(20261112, 120), history_row(20261110, 999),
+                history_row(20261111, 0, count=0), history_row(20261109, 95), history_row(20261112, 120)]
+
+        Crawler._save_share_history(self.share, rows, timezone.now(), 100)
+
+        self.assertEqual(self.stored_dates(), [date(2026, 11, 8), date(2026, 11, 9), date(2026, 11, 10),
+                                               date(2026, 11, 12)])
+        self.assertEqual(DailyHistory.objects.get(share=self.share, date=date(2026, 11, 10)).close, 100)
+
+    def test_existing_dates_cost_one_query(self) -> None:
+        rows = [history_row(20200101 + i, 100) for i in range(28)]
+        with self.assertNumQueries(5):  # savepoint, select existing dates, insert, update checkpoint, release
+            Crawler._save_share_history(self.share, rows, timezone.now(), 100)
+
+    def test_failed_insert_does_not_advance_checkpoint(self) -> None:
+        old = timezone.now() - timezone.timedelta(days=10)
+        Share.objects.filter(id=1).update(last_update=old)
+        self.share.refresh_from_db()
+
+        with patch.object(DailyHistory.objects, 'bulk_create', side_effect=IntegrityError('disk full')):
+            with self.assertRaises(IntegrityError):
+                Crawler._save_share_history(self.share, [history_row(20261112, 120)], timezone.now(), 100)
+
+        self.share.refresh_from_db()
+        self.assertEqual(self.share.last_update, old)
+        self.assertEqual(self.stored_dates(), [])
+
+    def test_contract_history_fills_gaps(self) -> None:
+        contract = Contract.objects.create(id=41, code='GB', description='gold bar', size=1, commodity_id=1,
+                                           commodity_name='gold')
+
+        def row(day: str, price: int) -> dict[str, Any]:
+            return {'DT': day, 'MaxPrice': price, 'MinPrice': price, 'TodaySettlementPrice': price, 'LastPrice': price,
+                    'FirstPrice': price, 'LastSettlementPrice': price, 'TradesValue': 1, 'TradesVolume': 1,
+                    'C_Buy': 1, 'C_Sell': 1}
+
+        Crawler._save_contract_history(contract, [row('2026-11-10T00:00:00', 100)], 100)
+        Crawler._save_contract_history(contract, [row('2026-11-12T00:00:00', 120), row('2026-11-10T00:00:00', 1),
+                                                  row('2026-11-08T00:00:00', 90), row('2026-11-09T00:00:00', 0)], 100)
+
+        dates = list(DailyHistory.objects.filter(contract=contract).order_by('date').values_list('date', flat=True))
+        self.assertEqual(dates, [date(2026, 11, 8), date(2026, 11, 10), date(2026, 11, 12)])
+
+
+class HistoryCheckpointTests(TestCase):
+    async def test_failed_request_does_not_advance_checkpoint(self) -> None:
+        share = await Share.objects.acreate(id=1, ticker='فملی', description='ملی صنایع مس ایران')
+        async with Crawler() as crawler:
+            with patch.object(crawler, 'submit_request', AsyncMock(side_effect=PermanentHttpError('404', 404))):
+                with self.assertRaises(PermanentHttpError):
+                    await crawler.update_share_history_item(share, days=3)
+        await share.arefresh_from_db()
+        self.assertIsNone(share.last_update)

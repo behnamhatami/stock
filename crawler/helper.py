@@ -2,20 +2,22 @@ import asyncio
 import contextlib
 import logging
 import typing
+from email.utils import parsedate_to_datetime
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone as dt_timezone
 from typing import Any, TypeAlias
 from urllib.parse import urlsplit
 
 import aiohttp
 import orjson
 from asgiref.sync import sync_to_async
+from django.db import transaction
 from django.utils import timezone
 from django.utils.timezone import make_aware
 from getuseragent import UserAgent
 from persiantools import characters
-from tenacity import _utils, retry_if_not_exception_type
+from tenacity import _utils, retry_if_exception_type
 from tenacity import stop_after_attempt, wait_random_exponential, retry, RetryCallState
 
 from crawler.decorators import log_time
@@ -29,6 +31,64 @@ JSONDict: TypeAlias = dict[str, Any]
 Headers: TypeAlias = dict[str, str]
 QueryParams: TypeAlias = Sequence[tuple[str, str | int]] | Mapping[str, str | int]
 Job: TypeAlias = Callable[[], Awaitable[Any]]
+
+
+RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({408, 425, 429, 500, 502, 503, 504})
+MAX_RETRY_AFTER_SECONDS: float = 300
+
+
+class HttpError(Exception):
+    """A response the crawler cannot use. Only `TransientHttpError` is retried."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class TransientHttpError(HttpError):
+    """Rate limiting (429), a transient server error (5xx, 408, 425), or an empty / HTML error page."""
+
+    def __init__(self, message: str, status_code: int | None = None, retry_after: float | None = None) -> None:
+        super().__init__(message, status_code)
+        self.retry_after = retry_after
+
+
+class PermanentHttpError(HttpError):
+    """Any other non-200 response, such as 400, 401, 403 or 404. Retrying would not help."""
+
+
+def parse_retry_after(value: str | None, now: datetime | None = None) -> float | None:
+    """Seconds to wait from a Retry-After header, given as seconds or as an HTTP date."""
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt_timezone.utc)
+    return max(0.0, (when - (now or datetime.now(dt_timezone.utc))).total_seconds())
+
+
+_backoff = wait_random_exponential(multiplier=1, max=60)
+
+
+def wait_backoff_or_retry_after(retry_state: RetryCallState) -> float:
+    """Exponential backoff with jitter, but never shorter than the server's Retry-After (capped)."""
+    delay = _backoff(retry_state)
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    retry_after = getattr(exc, 'retry_after', None)
+    if retry_after is not None:
+        delay = max(delay, min(retry_after, MAX_RETRY_AFTER_SECONDS))
+    return delay
+
+
+# Network failures, timeouts and transient responses are retried. Programming errors, a closed
+# session (RuntimeError), permanent HTTP errors and cancellation are raised at once.
+retry_transient = retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError, TransientHttpError))
 
 
 def after_log(
@@ -148,10 +208,8 @@ class Crawler:
             'User-Agent': user_agent.Random(),
         }
 
-    @retry(reraise=True, stop=stop_after_attempt(6), wait=wait_random_exponential(multiplier=1, max=60),
-           after=after_log(logger, logging.DEBUG),
-           retry=retry_if_not_exception_type(asyncio.CancelledError) & retry_if_not_exception_type(
-               KeyboardInterrupt))
+    @retry(reraise=True, stop=stop_after_attempt(6), wait=wait_backoff_or_retry_after,
+           after=after_log(logger, logging.DEBUG), retry=retry_transient)
     async def submit_request(self, method: str, url: str, params: QueryParams = tuple(),
                              headers: Headers | None = None, data: JSONDict | None = None,
                              retry_on_empty_response: bool = False, retry_on_html_response: bool = False,
@@ -164,14 +222,19 @@ class Crawler:
                     response = Response(url=str(raw.url), status_code=raw.status, content=await raw.read(),
                                         encoding=raw.get_encoding(), headers=dict(raw.headers))
 
+        name = url.split('/')[-1]
         if response.status_code != 200:
-            raise Exception(f"Http Error: {response.status_code}, {url.split('/')[-1]}, {params}")
+            message = f"Http Error: {response.status_code}, {name}, {params}"
+            if response.status_code in RETRYABLE_STATUS_CODES:
+                raise TransientHttpError(message, response.status_code,
+                                         parse_retry_after(response.headers.get('Retry-After')))
+            raise PermanentHttpError(message, response.status_code)
 
         if retry_on_empty_response and len(response.text.strip()) == 0:
-            raise Exception(f"Http Error: empty response, {url.split('/')[-1]}, {params}")
+            raise TransientHttpError(f"Http Error: empty response, {name}, {params}", response.status_code)
 
         if retry_on_html_response and ('<html>' in response.text or '<!doctype html>' in response.text):
-            raise Exception(f"Http Error: html response, {url.split('/')[-1]}, {params}")
+            raise TransientHttpError(f"Http Error: html response, {name}, {params}", response.status_code)
 
         return response
 
@@ -314,49 +377,66 @@ class Crawler:
             logger.info(f"update share list {keyword}, {len(new_list)} added ({new_list}), "
                         f"{len(update_list)} updated.")
 
-    async def update_share_history_item(self, share: Share, last_update: bool = True, days: int | None = None,
-                                        batch_size: int = 100) -> None:
+    async def update_share_history_item(self, share: Share, days: int | None = None, batch_size: int = 100) -> None:
+        """Download recent daily history and store it together with `share.last_update`.
+
+        Missing dates are inserted even when newer or older dates already exist. The checkpoint is the time
+        the request started and is written in the same transaction as the rows, so a failed request or
+        insert never advances it.
+        """
         if days is None:
             days = (timezone.now() - share.last_update).days + 1 if share.last_update else 0
 
+        requested_at = timezone.now()
         response = await self.submit_request(
             method='get', url=f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceDailyList/{share.id}/{days}',
             headers=self.get_tse_new_site_headers(), retry_on_html_response=True, timeout=25)
-        await sync_to_async(self._save_share_history)(share, response.json()['closingPriceDaily'], last_update,
+        await sync_to_async(self._save_share_history)(share, response.json()['closingPriceDaily'], requested_at,
                                                       batch_size)
 
     @staticmethod
-    def _save_share_history(share: Share, rows: list[JSONDict], last_update: bool, batch_size: int) -> None:
-        share_histories: list[DailyHistory] = []
+    def _parse_share_history(share: Share, rows: list[JSONDict]) -> list[DailyHistory]:
+        """Traded days only, one per date, oldest first."""
+        by_date: dict[date, DailyHistory] = {}
         for row in rows:
-            data: JSONDict = {'share': share,
-                              'date': date(*convert_integer_to_parts(row['dEven'])),
-                              'high': row['priceMax'],
-                              'low': row['priceMin'],
-                              'close': row['pClosing'],
-                              'last': row['priceYesterday'] + row['priceChange'],
-                              'first': row['priceFirst'],
-                              'open': row['priceYesterday'],
-                              'value': row['qTotCap'],
-                              'volume': row['qTotTran5J'],
-                              'count': row['zTotTran']}
-
-            if data['count'] == 0:
+            if row['zTotTran'] == 0:
                 continue
+            day = date(*convert_integer_to_parts(row['dEven']))
+            by_date[day] = DailyHistory(share=share, date=day,
+                                        high=row['priceMax'],
+                                        low=row['priceMin'],
+                                        close=row['pClosing'],
+                                        last=row['priceYesterday'] + row['priceChange'],
+                                        first=row['priceFirst'],
+                                        open=row['priceYesterday'],
+                                        value=row['qTotCap'],
+                                        volume=row['qTotTran5J'],
+                                        count=row['zTotTran'])
+        return [by_date[day] for day in sorted(by_date)]
 
-            if DailyHistory.objects.filter(share=share, date=data['date']).exists():
-                break
+    @staticmethod
+    def _without_existing(histories: list[DailyHistory], **owner: Share | Contract) -> list[DailyHistory]:
+        """Drop dates already stored for this share or contract, with one query for the whole date range."""
+        if not histories:
+            return []
+        dates = [history.date for history in histories]
+        existing: set[date] = set(DailyHistory.objects.filter(date__gte=min(dates), date__lte=max(dates), **owner)
+                                  .values_list('date', flat=True))
+        return [history for history in histories if history.date not in existing]
 
-            share_histories.append(DailyHistory(**data))
+    @classmethod
+    def _save_share_history(cls, share: Share, rows: list[JSONDict], requested_at: datetime,
+                            batch_size: int) -> None:
+        histories = cls._parse_share_history(share, rows)
+        with transaction.atomic():
+            new_histories = cls._without_existing(histories, share=share)
+            # ignore_conflicts: another crawler process may insert the same date concurrently.
+            DailyHistory.objects.bulk_create(new_histories, batch_size=batch_size, ignore_conflicts=True)
+            Share.objects.filter(id=share.id).update(last_update=requested_at)
+        share.last_update = requested_at
 
-        share.last_update = timezone.now()
-
-        DailyHistory.objects.bulk_create(share_histories, batch_size=batch_size)
-        if last_update:
-            share.save()
-
-        if share_histories:
-            logger.info(f"history of {share.ticker} in {len(share_histories)} days added.")
+        if new_histories:
+            logger.info(f"history of {share.ticker} in {len(new_histories)} days added.")
 
     @log_time
     async def update_share_list(self, batch_size: int = 100) -> None:
@@ -452,7 +532,7 @@ class Crawler:
         if days is None:
             days = await sync_to_async(self._contract_history_days)(contract)
 
-        contract_histories: list[DailyHistory] = []
+        rows: list[JSONDict] = []
         for i in range(days // 90 + 1):
             from_date = date.today() - timedelta(days=min(days, (i + 1) * 90 - 1))
             to_date = min(date.today(), from_date + timedelta(days=90 - 1))
@@ -471,14 +551,9 @@ class Crawler:
             if not history_response['Data']:
                 break
 
-            contract_histories.extend(
-                await sync_to_async(self._parse_contract_history)(contract, history_response['Data']))
+            rows.extend(history_response['Data'])
 
-        await sync_to_async(DailyHistory.objects.bulk_create)(list(reversed(contract_histories)),
-                                                              batch_size=batch_size)
-
-        if contract_histories:
-            logger.info(f"history of {contract.code} in {len(contract_histories)} days added.")
+        await sync_to_async(self._save_contract_history)(contract, rows, batch_size)
 
     @staticmethod
     def _contract_history_days(contract: Contract) -> int:
@@ -486,26 +561,33 @@ class Crawler:
 
     @staticmethod
     def _parse_contract_history(contract: Contract, rows: list[JSONDict]) -> list[DailyHistory]:
-        contract_histories: list[DailyHistory] = []
+        """Valid days only, one per date, oldest first."""
+        by_date: dict[date, DailyHistory] = {}
         for row in rows:
-            data: JSONDict = {'contract': contract,
-                              'date': make_aware(datetime.fromisoformat(row['DT'])).date(),
-                              'high': row['MaxPrice'],
-                              'low': row['MinPrice'],
-                              'close': row['TodaySettlementPrice'],
-                              'last': row['LastPrice'],
-                              'first': row['FirstPrice'],
-                              'open': row['LastSettlementPrice'],
-                              'value': row['TradesValue'],
-                              'volume': row['TradesVolume'],
-                              'count': row['C_Buy'] + row['C_Sell'],
-                              }
+            history = DailyHistory(contract=contract,
+                                   date=make_aware(datetime.fromisoformat(row['DT'])).date(),
+                                   high=row['MaxPrice'],
+                                   low=row['MinPrice'],
+                                   close=row['TodaySettlementPrice'],
+                                   last=row['LastPrice'],
+                                   first=row['FirstPrice'],
+                                   open=row['LastSettlementPrice'],
+                                   value=row['TradesValue'],
+                                   volume=row['TradesVolume'],
+                                   count=row['C_Buy'] + row['C_Sell'])
 
-            if data['last'] == 0 or data['open'] == 0 or data['first'] == 0 or data['open'] == 0:
+            if history.last == 0 or history.open == 0 or history.first == 0:
                 continue
 
-            if DailyHistory.objects.filter(contract=contract, date=data['date']).exists():
-                break
+            by_date[history.date] = history
+        return [by_date[day] for day in sorted(by_date)]
 
-            contract_histories.append(DailyHistory(**data))
-        return contract_histories
+    @classmethod
+    def _save_contract_history(cls, contract: Contract, rows: list[JSONDict], batch_size: int) -> None:
+        histories = cls._parse_contract_history(contract, rows)
+        with transaction.atomic():
+            new_histories = cls._without_existing(histories, contract=contract)
+            DailyHistory.objects.bulk_create(new_histories, batch_size=batch_size, ignore_conflicts=True)
+
+        if new_histories:
+            logger.info(f"history of {contract.code} in {len(new_histories)} days added.")

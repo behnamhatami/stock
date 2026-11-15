@@ -25,14 +25,13 @@ class Command(BaseCommand):
 
         asyncio.run(self.crawl(share_list, contract_list, options['concurrency']))
 
-        Share.objects.bulk_update(share_list, ['last_update'], batch_size=100)
         new_history_count: int = DailyHistory.objects.filter(share__isnull=False).count()
         logger.info(f"Share history updated. {new_history_count - history_count} added.")
 
     @staticmethod
     async def crawl(share_list: list[Share], contract_list: list[Contract], concurrency: int) -> None:
         async with Crawler(concurrency=concurrency) as crawler:
-            jobs = [partial(crawler.update_share_history_item, share, last_update=False) for share in share_list]
+            jobs = [partial(crawler.update_share_history_item, share) for share in share_list]
             await crawler.run_jobs("Update Share History", jobs, log=True, log_exception_on_failure=False)
 
             jobs = [partial(crawler.update_contract_history_item, contract) for contract in contract_list]
