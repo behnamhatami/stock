@@ -469,8 +469,7 @@ class Crawler:
                 timeout=30)).json()
 
             if not history_response['Data']:
-                if contract_histories:
-                    break
+                break
 
             contract_histories.extend(
                 await sync_to_async(self._parse_contract_history)(contract, history_response['Data']))
