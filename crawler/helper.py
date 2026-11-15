@@ -4,10 +4,10 @@ import json
 import logging
 import time
 import typing
-from email.utils import parsedate_to_datetime
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, date, timedelta, timezone as dt_timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Final, TypeAlias, TypeVar
 from urllib.parse import urlsplit
 
@@ -38,7 +38,6 @@ Job: TypeAlias = Callable[[], Awaitable[Any]]
 TSE_API: Final[str] = 'https://cdn.tsetmc.com/api'
 CDC_API: Final[str] = 'https://dataapi.ime.co.ir/api/CDC'
 T = TypeVar('T')
-
 
 RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({408, 425, 429, 500, 502, 503, 504})
 MAX_RETRY_AFTER_SECONDS: float = 300

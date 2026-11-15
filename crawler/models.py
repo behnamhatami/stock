@@ -252,7 +252,6 @@ class Share(models.Model, HistoryHandler):
                     parts[2] = parts[2] + '01'
                 dt = convert_date_string_to_date(parts[2])
                 ticker_parts = parts[0].replace('.', ' ').strip().split()
-
                 for ticker in [ticker_parts[-2] + ' ' + ticker_parts[-1], ticker_parts[-1]]:
                     ticker = OPTION_DICT_SYNONYMS.get(ticker, ticker)
                     candidates = [candidate for candidate in Share.objects.filter(ticker=ticker) if

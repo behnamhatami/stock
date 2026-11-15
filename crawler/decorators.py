@@ -1,3 +1,10 @@
+import logging
+
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest
+from ipware import get_client_ip
+
+logger = logging.getLogger(__name__)
 import functools
 import inspect
 import logging
@@ -5,22 +12,13 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar
 
-from django.core.exceptions import PermissionDenied
-from django.http import HttpRequest
-from ipware import get_client_ip
-
 logger = logging.getLogger(__name__)
 
 P = ParamSpec('P')
 R = TypeVar('R')
 
 
-def log_time(f: Callable[P, R]) -> Callable[P, R]:
-    """Log how long `f` takes; works for both regular and `async def` functions.
-
-    Durations use `time.perf_counter()`: a monotonic clock (never jumps when the system time changes)
-    with the highest available resolution.
-    """
+def _timed(f: Callable[P, R], label: Callable[..., str]) -> Callable[P, R]:
     if inspect.iscoroutinefunction(f):
         async_f: Callable[P, Awaitable[Any]] = f
 
@@ -30,7 +28,7 @@ def log_time(f: Callable[P, R]) -> Callable[P, R]:
             try:
                 return await async_f(*args, **kwargs)
             finally:
-                logger.info(f"{f.__name__} runs in {time.perf_counter() - start:.2f}s")
+                logger.info(f"{label(*args)} runs in {time.perf_counter() - start:.2f}s")
 
         return async_wrapper  # type: ignore[return-value]
 
@@ -40,9 +38,19 @@ def log_time(f: Callable[P, R]) -> Callable[P, R]:
         try:
             return f(*args, **kwargs)
         finally:
-            logger.info(f"{f.__name__} runs in {time.perf_counter() - start:.2f}s")
+            logger.info(f"{label(*args)} runs in {time.perf_counter() - start:.2f}s")
 
     return wrapper
+
+
+def log_time(f: Callable[P, R]) -> Callable[P, R]:
+    """Time a synchronous or asynchronous function."""
+    return _timed(f, lambda *args: f.__name__)
+
+
+def log_time_class(f: Callable[P, R]) -> Callable[P, R]:
+    """Time a method, prefixing the log message with its instance."""
+    return _timed(f, lambda *args: f"{args[0]}: {f.__name__}")
 
 
 def check_ip(white_list: list[str]) -> Callable[[Callable[..., R]], Callable[..., R]]:

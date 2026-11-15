@@ -1,8 +1,8 @@
 import asyncio
-from typing import Any
 import logging
 import re
 from functools import partial
+from typing import Any
 
 from django.core.management.base import BaseCommand, CommandParser
 
@@ -20,11 +20,13 @@ class Command(BaseCommand):
         parser.add_argument('--concurrency', type=int, default=10, help='maximum simultaneous requests')
 
     def handle(self, *args: Any, **options: Any) -> None:
-        persian_char: list[str] = ["آ", "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع",
-                        "غ", "ف", "ق", "ل", "م", "ن", "ه", "و", "پ", "چ", "ژ", "ک", "گ", "ی"]
+        persian_char: list[str] = ["آ", "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط",
+                                   "ظ", "ع",
+                                   "غ", "ف", "ق", "ل", "م", "ن", "ه", "و", "پ", "چ", "ژ", "ک", "گ", "ی"]
         tickers: set[str] = set(Share.objects.all().values_list('ticker', flat=True))
-        numbered_tickers: set[str] = {re.sub(r'[0-9]+', '', ticker) for ticker in tickers if bool(re.search(r'\d', ticker))} - {
-            ''}
+        numbered_tickers: set[str] = {re.sub(r'[0-9]+', '', ticker) for ticker in tickers if
+                                      bool(re.search(r'\d', ticker))} - {
+                                         ''}
         two_chars: list[str] = [x + y for x in persian_char for y in persian_char]
 
         three_chars: list[str] = []

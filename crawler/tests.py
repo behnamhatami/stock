@@ -1,7 +1,7 @@
 import asyncio
-from typing import Any
 from datetime import date, datetime, timezone as dt_timezone
 from types import SimpleNamespace
+from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 

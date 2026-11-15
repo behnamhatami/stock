@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('crawler', '0015_contract_alter_sharedailyhistory_unique_together_and_more'),
     ]
