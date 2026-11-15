@@ -519,13 +519,13 @@ class Crawler:
         new_list: list[Contract] = []
         update_list: list[Contract] = []
         for contract_id, row in found.items():
-            values = {field: row[key] for field, key in cls.CONTRACT_FIELDS.items()}
+            values = {field_name: row[key] for field_name, key in cls.CONTRACT_FIELDS.items()}
             contract = existing.get(contract_id)
             if contract is None:
                 new_list.append(Contract(id=contract_id, **values))
-            elif any(getattr(contract, field) != value for field, value in values.items()):
-                for field, value in values.items():
-                    setattr(contract, field, value)
+            elif any(getattr(contract, field_name) != value for field_name, value in values.items()):
+                for field_name, value in values.items():
+                    setattr(contract, field_name, value)
                 update_list.append(contract)
 
         with transaction.atomic():
