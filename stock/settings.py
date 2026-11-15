@@ -100,7 +100,7 @@ DATABASES = {
             'transaction_mode': 'IMMEDIATE',
             # WAL lets the admin and reports read while the crawler writes. Keep the database on a
             # local disk; WAL does not work on network file systems.
-            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL',
+            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL',
         },
         'USER': '',
         'PASSWORD': '',
