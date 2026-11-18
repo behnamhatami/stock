@@ -754,7 +754,9 @@ class TSEMarketWatch:
 
     async def refresh(self, crawler: Crawler) -> int:
         """Download the changes (or everything) and merge them. Returns the number of instruments received."""
-        full = not self.rows or time.monotonic() - self._last_full_refresh >= self.full_refresh_seconds
+        started = time.monotonic()
+        since_full = started - self._last_full_refresh
+        full = not self.rows or since_full >= self.full_refresh_seconds
         try:
             received = await self._download(crawler, full)
         except Exception:
@@ -764,7 +766,8 @@ class TSEMarketWatch:
             full, received = True, await self._download(crawler, True)
 
         logger.debug(f'market watch {"full" if full else "incremental"}: {received} instruments, '
-                     f'hEven={self.h_even}, RefID={self.ref_id}')
+                     f'hEven={self.h_even}, RefID={self.ref_id}, last full {since_full:.0f}s ago, '
+                     f'took {time.monotonic() - started:.1f}s')
         return received
 
     async def _read_activity_time(self, crawler: Crawler) -> datetime | None:
