@@ -75,10 +75,8 @@ class HistoryHandler:
 
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=24 * 60 * 60))
     def get_first_date_of_history(self):
-        if self.history_size() > 0:
-            return self.history.all().filter(date__lte=Share.get_today_new()).earliest('date').date
-        else:
-            return Share.get_today_new()
+        first = self.history.filter(date__lte=Share.get_today_new()).order_by('date').values_list('date', flat=True).first()
+        return first or Share.get_today_new()
 
     def day_history(self, loc: int, day_offset: int = DAY_OFFSET_DEFAULT, normalize_strategy: str = 'scaler'):
         return self.daily_history(day_offset, normalize_strategy).iloc[loc]
@@ -101,13 +99,9 @@ class HistoryHandler:
 
     @cached(cache=TTLCache(maxsize=10 ** 5, ttl=60 * 60))
     def get_average_trade_value(self, days: int) -> tuple[float, float]:
-        if self.history_size() == 0:
-            return 0, 0
-
-        histories = list(self.history.all().filter(date__lte=Share.get_today_new()).order_by('date')[
-                             max(self.history_size() - days, 0):].values_list('value', flat=True))
-
-        return mean(histories), median(histories)
+        histories = list(self.history.filter(date__lte=Share.get_today_new()).order_by('-date')[:days]
+                         .values_list('value', flat=True))
+        return (mean(histories), median(histories)) if histories else (0, 0)
 
 
 class Contract(models.Model, HistoryHandler):
@@ -363,14 +357,14 @@ class DailyHistory(models.Model):
     class Meta:
         constraints = [
             UniqueConstraint(
-                fields=['date', 'share'],
+                fields=['share', 'date'],
                 condition=Q(share__isnull=False),
-                name='daily_history_date_share_unique'
+                name='daily_history_share_date_unique'
             ),
             UniqueConstraint(
-                fields=['date', 'contract'],
+                fields=['contract', 'date'],
                 condition=Q(contract__isnull=False),
-                name='daily_history_date_contract_unique'
+                name='daily_history_contract_date_unique'
             ),
             CheckConstraint(
                 condition=(

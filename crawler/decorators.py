@@ -1,16 +1,13 @@
-import logging
-
-from django.core.exceptions import PermissionDenied
-from django.http import HttpRequest
-from ipware import get_client_ip
-
-logger = logging.getLogger(__name__)
 import functools
 import inspect
 import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar
+
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest
+from ipware import get_client_ip
 
 logger = logging.getLogger(__name__)
 

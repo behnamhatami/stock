@@ -29,19 +29,20 @@ class Command(BaseCommand):
         day_offset = options.get('days', 0)
 
         row_list = []
-        for share in Share.objects.all().order_by('ticker'):
-            if share.history_size(day_offset) > 0 and share.last_day_history(day_offset)['date'] >= Share.get_today_new(
-                    day_offset) - timedelta(days=1):
-                results = dict()
-                for analyzer in self.daily_analyzers:
-                    result = analyzer.analyze(share, day_offset)
-                    if result:
-                        results.update({key: str(value) for key, value in result.items()})
+        today = Share.get_today_new(day_offset)
+        # traded on the last two days (a history up to `today` whose last date is at least today - 1)
+        recent_shares = Share.objects.filter(history__date__range=(today - timedelta(days=1), today)).distinct()
+        for share in recent_shares.order_by('ticker'):
+            results = dict()
+            for analyzer in self.daily_analyzers:
+                result = analyzer.analyze(share, day_offset)
+                if result:
+                    results.update({key: str(value) for key, value in result.items()})
 
-                if results:
-                    ticker_link = f'<a href="https://www.tsetmc.com/instInfo/{share.id}">{share.ticker}</a>'
-                    row_list.append({"ticker": ticker_link, **results})
-                    logger.info(f"{share.ticker}: {results}")
+            if results:
+                ticker_link = f'<a href="https://www.tsetmc.com/instInfo/{share.id}">{share.ticker}</a>'
+                row_list.append({"ticker": ticker_link, **results})
+                logger.info(f"{share.ticker}: {results}")
 
         if row_list:
             df = pd.DataFrame(row_list)

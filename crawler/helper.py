@@ -536,11 +536,15 @@ class CrawlerStorage:
         shares: dict[int, Share] = Share.objects.in_bulk([int(row['insCode']) for row in rows])
         groups: dict[int, ShareGroup] = ShareGroup.objects.in_bulk()
 
+        fields = ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group', 'total_count',
+                  'bazaar_group', 'option_strike_price', 'strike_date', 'base_share']
+        columns = [Share._meta.get_field(name).attname for name in fields]  # group_id, not group: no query
         new_list: list[Share] = []
         update_list: list[Share] = []
         for row in rows:
             share_id = int(row['insCode'])
             share = shares.get(share_id) or Share()
+            before = [getattr(share, column) for column in columns] if share.id else None
 
             try:
                 share.enable = True
@@ -553,16 +557,16 @@ class CrawlerStorage:
                 share.total_count = int(row['ztd'])
                 share.bazaar_group = row['yVal']
                 share.strike_date, share.option_strike_price, share.base_share = share.parse_data()
-                (update_list if share.id else new_list).append(share)
+                if not share.id:
+                    new_list.append(share)
+                elif before != [getattr(share, column) for column in columns]:
+                    update_list.append(share)
                 share.id = share_id
             except Exception:
                 logger.warning(f'{share.ticker} parse share data failed! {row}!!')
 
         Share.objects.bulk_create(new_list, batch_size=batch_size)
-        Share.objects.bulk_update(update_list,
-                                  ['enable', 'ticker', 'description', 'eps', 'base_volume', 'bazaar_type', 'group',
-                                   'total_count', 'bazaar_group', 'option_strike_price', 'strike_date', 'base_share'],
-                                  batch_size=100)
+        Share.objects.bulk_update(update_list, fields, batch_size=100)
         logger.info(f"update share list, {len(new_list)} ({new_list}) added, {len(update_list)} updated.")
 
     @staticmethod

@@ -23,7 +23,8 @@ class Command(BaseCommand):
         persian_char: list[str] = ["آ", "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط",
                                    "ظ", "ع",
                                    "غ", "ف", "ق", "ل", "م", "ن", "ه", "و", "پ", "چ", "ژ", "ک", "گ", "ی"]
-        tickers: set[str] = set(Share.objects.all().values_list('ticker', flat=True))
+        ticker_list: list[str] = list(Share.objects.values_list('ticker', flat=True))
+        tickers: set[str] = set(ticker_list)
         numbered_tickers: set[str] = {re.sub(r'[0-9]+', '', ticker) for ticker in tickers if
                                       bool(re.search(r'\d', ticker))} - {
                                          ''}
@@ -31,7 +32,7 @@ class Command(BaseCommand):
 
         three_chars: list[str] = []
         for name in two_chars:
-            if Share.objects.filter(ticker__contains=name).count() > 30:
+            if sum(name in ticker for ticker in ticker_list) > 30:
                 for extra_char in persian_char:
                     three_chars.append(name + extra_char)
 
